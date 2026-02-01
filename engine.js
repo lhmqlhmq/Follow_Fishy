@@ -441,6 +441,7 @@ export function initSimulation(canvasId, config = {}) {
     function rebuildGrid(fish) { for (let i = 0; i < grid.length; i++) grid[i].length = 0; for (let i = 0; i < fish.length; i++) { const f = fish[i], cx = clamp(Math.floor(f.x / cellSize), 0, gridW - 1), cy = clamp(Math.floor(f.y / cellSize), 0, gridH - 1); grid[cy * gridW + cx].push(i); } }
 
     function spawnFish(count) {
+        const targetFishCount = count;
         const silverTypes = [
             { baseHue: 200, satRange: [5, 18] }, { baseHue: 210, satRange: [8, 22] }, { baseHue: 190, satRange: [6, 16] }, { baseHue: 220, satRange: [10, 25] }, { baseHue: 195, satRange: [4, 14] }
         ];
@@ -525,7 +526,8 @@ export function initSimulation(canvasId, config = {}) {
 
     function step(dt, t) {
         updateMigration(dt, t); rebuildGrid(fish);
-        const speedFactor = settings.speed, accel = 0.14, baseDrag = 0.94, stepK = 0.1;
+        const SPEED = settings.speed;
+        const speedFactor = SPEED, accel = 0.14, baseDrag = 0.94, stepK = 0.1;
         for (let i = 0; i < fish.length; i++) {
             const f = fish[i]; if (f.breakout > 0) f.breakout -= dt; else if (Math.random() < 0.0005) f.breakout = rand(300, 800);
             let ax = 0, ay = 0, avx = 0, avy = 0, cox = 0, coy = 0, sepX = 0, sepY = 0, count = 0;
