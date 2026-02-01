@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Thermal Plume School</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#040a12;cursor:default;user-select:none}
+  canvas{display:block}
+  .hud{
+    position:fixed; top:12px; right:12px;
+    display:flex; gap:10px; align-items:center;
+    padding:6px 10px;
+    border-radius:12px;
+    background:rgba(8,18,30,0.50);
+    border:1px solid rgba(255,255,255,0.10);
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    color:rgba(235,245,255,0.88);
+    font:12px/1 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    letter-spacing:.2px;
+    opacity:.85;
+  }
+  .hud .grp{display:flex; gap:6px; align-items:center}
+  .hud button{
+    width:26px;height:22px;border-radius:8px;
+    border:1px solid rgba(255,255,255,0.10);
+    background:rgba(255,255,255,0.06);
+    color:rgba(255,255,255,0.90);
+    cursor:pointer;
+  }
+  .hud button:hover{background:rgba(255,255,255,0.10)}
+  .hud .pill{
+    padding:4px 8px;border-radius:999px;
+    border:1px solid rgba(255,255,255,0.10);
+    background:rgba(255,255,255,0.06);
+    min-width:54px; text-align:center;
+    font-weight:700;
+  }
+  .hint{
+    position:fixed; left:50%; bottom:14px;
+    transform:translateX(-50%);
+    padding:6px 10px;
+    border-radius:999px;
+    background:rgba(8,18,30,0.35);
+    border:1px solid rgba(255,255,255,0.10);
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    color:rgba(235,245,255,0.72);
+    font:12px/1 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    opacity:.92;
+    pointer-events:none;
+    transition:opacity .8s ease;
+  }
+  .hint.off{opacity:0}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="hud">
+  <div class="grp">
+    <span style="opacity:.7;font-weight:800;">SPEED</span>
+    <button id="spdMinus" title="Speed down">−</button>
+    <div class="pill" id="spdVal">1.70×</div>
+    <button id="spdPlus" title="Speed up">+</button>
+  </div>
+  <div class="grp">
+    <span style="opacity:.7;font-weight:800;">FISH</span>
+    <button id="cntMinus" title="Fewer fish">−</button>
+    <div class="pill" id="cntVal">900</div>
+    <button id="cntPlus" title="More fish">+</button>
+  </div>
+  <button id="snd" title="Toggle sound (default off)">Sound</button>
+</div>
+
+<div class="hint" id="hint">Move to stir the thermal plume • Bubbles attract curious fish</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { alpha:false });
+
+  // ---------- Utilities ----------
+  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+  const clamp01 = v=>clamp(v,0,1);
+  const lerp = (a,b,t)=>a+(b-a)*t;
+  const rand = (a,b)=>a+Math.random()*(b-a);
+
+  // Cheap deterministic noise (no allocations)
+  function hash2(x,y){
+    const s = Math.sin(x*127.1 + y*311.7)*43758.5453123;
+    return s - Math.floor(s);
+  }
+  function smoothstep(t){ return t*t*(3-2*t); }
+  function valueNoise(x,y){
+    const xi = Math.floor(x), yi = Math.floor(y);
+    const xf = x - xi, yf = y - yi;
+    const a = hash2(xi,yi);
+    const b = hash2(xi+1,yi);
+    const c = hash2(xi,yi+1);
+    const d = hash2(xi+1,yi+1);
+    const u = smoothstep(xf), v = smoothstep(yf);
+    return lerp(lerp(a,b,u), lerp(c,d,u), v);
+  }
+  function fbm(x,y){
+    let f=0, amp=0.5, freq=1;
+    for(let i=0;i<4;i++){
+      f += amp*valueNoise(x*freq,y*freq);
+      amp *= 0.5; freq *= 2;
+    }
+    return f;
+  }
+
+  // ---------- Resize / DPR ----------
+  let W=innerWidth, H=innerHeight, DPR=1;
+  function resize(){
+    DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    W = innerWidth; H = innerHeight;
+    canvas.width = Math.floor(W*DPR);
+    canvas.height = Math.floor(H*DPR);
+    canvas.style.width = W+'px';
+    canvas.style.height = H+'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    initSpatial();
+  }
+  addEventListener('resize', resize, { passive:true });
+
+  // ---------- Pointer ----------
+  const pointer = { x: W*0.5, y: H*0.5, vx:0, vy:0, lastT: performance.now() };
+  addEventListener('pointermove', (e)=>{
+    const now = performance.now();
+    const dt = Math.max(1, now - pointer.lastT);
+    const nx = e.clientX, ny = e.clientY;
+    pointer.vx = (nx - pointer.x) / dt; // px/ms
+    pointer.vy = (ny - pointer.y) / dt;
+    pointer.x = nx; pointer.y = ny; pointer.lastT = now;
+    hintTimeoutArm();
+  }, { passive:true });
+
+  // ---------- HUD ----------
+  let SPEED = 0.7;                  // requested default
+  let targetFishCount = 1300;       // requested default
+
+  const spdVal = document.getElementById('spdVal');
+  const cntVal = document.getElementById('cntVal');
+  function updateHud(){
+    spdVal.textContent = SPEED.toFixed(2)+'×';
+    cntVal.textContent = String(targetFishCount);
+  }
+  updateHud();
+
+  document.getElementById('spdMinus').onclick = ()=>{ SPEED = clamp(SPEED/1.12, 0.25, 4.0); updateHud(); };
+  document.getElementById('spdPlus').onclick  = ()=>{ SPEED = clamp(SPEED*1.12, 0.25, 4.0); updateHud(); };
+
+  document.getElementById('cntMinus').onclick = ()=>{ targetFishCount = clamp(targetFishCount-150, 200, 2000); updateHud(); };
+  document.getElementById('cntPlus').onclick  = ()=>{ targetFishCount = clamp(targetFishCount+150, 200, 2000); updateHud(); };
+
+  // ---------- Hint auto-hide ----------
+  const hint = document.getElementById('hint');
+  let hintTimer = null;
+  function hintTimeoutArm(){
+    hint.classList.remove('off');
+    if (hintTimer) clearTimeout(hintTimer);
+    hintTimer = setTimeout(()=>hint.classList.add('off'), 4500);
+  }
+  hintTimeoutArm();
+
+  // ---------- Background: Marine Snow (3 layers) ----------
+  const snow = [];
+  function initSnow(){
+    snow.length = 0;
+    const layers = [
+      { n: 300, z: 0.35, sp: 0.16, r: [0.5, 1.0], a: 0.10 },
+      { n: 270, z: 0.65, sp: 0.28, r: [0.7, 1.5], a: 0.14 },
+      { n: 190, z: 1.00, sp: 0.44, r: [1.0, 2.2], a: 0.18 }
+    ];
+    for (const L of layers){
+      for(let i=0;i<L.n;i++){
+        snow.push({
+          x: Math.random()*W,
+          y: Math.random()*H,
+          z: L.z,
+          vy: L.sp*(0.8+Math.random()*0.6),
+          vx: L.sp*0.35*(Math.random()*2-1),
+          r: rand(L.r[0], L.r[1]),
+          a: L.a
+        });
+      }
+    }
+  }
+
+  // ---------- Bubbles (local attractors) ----------
+  const bubbles = []; // {x,y,r,life,maxLife,strength,rad,wob}
+  let bubbleAcc = 0;
+
+  function spawnBubbleCluster(x,y){
+    const count = 3 + Math.floor(Math.random()*8); // 3..10
+    const baseR = rand(6,12);
+    for(let i=0;i<count;i++){
+      bubbles.push({
+        x: x + rand(-55,55),
+        y: y + rand(-55,55),
+        r: baseR + rand(0,8),
+        life: 0,
+        maxLife: rand(1400, 2600),   // ms
+        strength: rand(0.75, 1.25),
+        rad: rand(120, 240),
+        wob: rand(0, 1000)
+      });
+    }
+  }
+
+  // ---------- Sound (default off; subtle) ----------
+  let soundOn = false;
+  let audio = null;
+
+  function createAudio(){
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const ac = new AudioCtx();
+    const master = ac.createGain();
+    master.gain.value = 0.0;
+
+    const lp = ac.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 2200;
+    lp.Q.value = 0.7;
+
+    master.connect(lp);
+    lp.connect(ac.destination);
+
+    // low pressure bed
+    const sub = ac.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.value = 44;
+    const subG = ac.createGain();
+    subG.gain.value = 0.010;
+    sub.connect(subG);
+    subG.connect(master);
+
+    function bubbleTick(str=0.35){
+      const t = ac.currentTime;
+      const o = ac.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = 220 + Math.random()*140;
+      const g = ac.createGain();
+      g.gain.value = 0.0001;
+      o.connect(g);
+      g.connect(master);
+      const peak = 0.010 * clamp01(str);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(peak, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+      o.start(t);
+      o.stop(t + 0.4);
+    }
+
+    sub.start();
+
+    return {
+      ac, master,
+      enable(){
+        const t = ac.currentTime;
+        master.gain.cancelScheduledValues(t);
+        master.gain.setValueAtTime(master.gain.value, t);
+        master.gain.linearRampToValueAtTime(0.75, t + 0.6);
+      },
+      disable(){
+        const t = ac.currentTime;
+        master.gain.cancelScheduledValues(t);
+        master.gain.setValueAtTime(master.gain.value, t);
+        master.gain.linearRampToValueAtTime(0.0, t + 0.35);
+      },
+      bubbleTick
+    };
+  }
+
+  document.getElementById('snd').onclick = async ()=>{
+    if (!audio){
+      audio = createAudio();
+      try{ if (audio.ac.state !== 'running') await audio.ac.resume(); } catch {}
+    }
+    soundOn = !soundOn;
+    document.getElementById('snd').textContent = soundOn ? 'Sound On' : 'Sound';
+    if (soundOn) audio.enable(); else audio.disable();
+  };
+
+  // ---------- Spatial hashing for schooling (performance) ----------
+  let cellSize = 46;
+  let gridW = 0, gridH = 0, grid = null;
+
+  function initSpatial(){
+    gridW = Math.max(1, Math.ceil(W / cellSize));
+    gridH = Math.max(1, Math.ceil(H / cellSize));
+    grid = new Array(gridW * gridH);
+    for (let i=0;i<grid.length;i++) grid[i] = [];
+  }
+
+  function gridIndex(x,y){
+    const cx = clamp(Math.floor(x / cellSize), 0, gridW-1);
+    const cy = clamp(Math.floor(y / cellSize), 0, gridH-1);
+    return cy * gridW + cx;
+  }
+
+  function rebuildGrid(fish){
+    for (let i=0;i<grid.length;i++) grid[i].length = 0;
+    for (let i=0;i<fish.length;i++){
+      grid[gridIndex(fish[i].x, fish[i].y)].push(i);
+    }
+  }
+
+  // ---------- Fish (school-like) ----------
+  const fish = [];
+  function spawnFish(n){
+    for(let i=0;i<n;i++){
+      // "photo-ish" school: mostly small, some larger
+      const isBig = Math.random() < 0.08;
+      const size = isBig ? rand(4.0, 6.6) : rand(2.0, 3.4);
+      fish.push({
+        x: Math.random()*W,
+        y: Math.random()*H,
+        vx: rand(-0.25,0.25),
+        vy: rand(-0.25,0.25),
+        size,
+        bubbleAffinity: Math.random(),       // <0.46 participates ~46%
+        hueSeed: Math.random(),
+        wander: rand(0.7, 1.3),
+        phase: rand(0, 1000),
+        breakout: 0
+      });
+    }
+  }
+
+  function reconcileFishCount(){
+    const diff = targetFishCount - fish.length;
+    if (diff > 0) spawnFish(Math.min(diff, 60));
+    else if (diff < 0) fish.splice(Math.max(0, fish.length + diff), Math.min(-diff, 60));
+  }
+
+  // ---------- Background (ocean) ----------
+  function drawBackground(t){
+    // Base vertical gradient
+    const g0 = ctx.createLinearGradient(0, 0, 0, H);
+    g0.addColorStop(0.00, '#061a28');
+    g0.addColorStop(0.45, '#04121d');
+    g0.addColorStop(1.00, '#02070e');
+    ctx.fillStyle = g0;
+    ctx.fillRect(0,0,W,H);
+
+    // Soft thermocline bands
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.18;
+    const bandN = 6;
+    for(let i=0;i<bandN;i++){
+      const y = (i/(bandN-1))*H;
+      const drift = Math.sin(t*0.00012 + i*1.7) * 38;
+      const thick = 180 + i*55;
+      const gy = ctx.createLinearGradient(0, y - thick*0.5, 0, y + thick*0.5);
+      gy.addColorStop(0, 'rgba(0,0,0,0)');
+      gy.addColorStop(0.5, `rgba(155,210,245,${0.20 + i*0.02})`);
+      gy.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.filter = `blur(${14 + i*4}px)`;
+      ctx.fillStyle = gy;
+      ctx.fillRect(-60 + drift, y - thick*0.5, W + 120, thick);
+    }
+    ctx.filter = 'none';
+    ctx.restore();
+
+    // Vignette
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    const vg = ctx.createRadialGradient(W*0.5, H*0.45, Math.min(W,H)*0.35,
+                                        W*0.5, H*0.45, Math.max(W,H)*0.78);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.72)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0,0,W,H);
+    ctx.restore();
+
+    // Local haze near plume (subtle)
+    const gx = pointer.x, gy = pointer.y;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.12;
+    const haze = ctx.createRadialGradient(gx, gy, 10, gx, gy, 360);
+    haze.addColorStop(0, 'rgba(190,240,255,0.24)');
+    haze.addColorStop(0.25, 'rgba(170,235,255,0.09)');
+    haze.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = haze;
+    ctx.beginPath();
+    ctx.arc(gx, gy, 360, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawSnow(t){
+    for (const s of snow){
+      // global current + tiny local plume disturbance
+      const dx = s.x - pointer.x, dy = s.y - pointer.y;
+      const d = Math.hypot(dx,dy);
+      const plume = Math.exp(-d/260);
+      const disturb = plume*0.20;
+
+      s.x += (0.10 + s.vx)*s.z + (pointer.vx*26)*disturb*s.z;
+      s.y += (0.18 + s.vy)*s.z + (pointer.vy*26)*disturb*s.z;
+
+      // wobble
+      s.x += Math.sin(t*0.0007 + s.y*0.01)*0.10*s.z;
+
+      if (s.x < -20) s.x = W + 20;
+      if (s.x > W + 20) s.x = -20;
+      if (s.y < -20) s.y = H + 20;
+      if (s.y > H + 20) s.y = -20;
+
+      ctx.globalAlpha = s.a;
+      ctx.fillStyle = 'rgba(200,240,255,1)';
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r*s.z, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawThermalCore(t){
+    const x = pointer.x, y = pointer.y;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const pulse = 0.6 + 0.4*Math.sin(t*0.006);
+    const rg = ctx.createRadialGradient(x,y,2,x,y,120);
+    rg.addColorStop(0,'rgba(220,255,250,0.18)');
+    rg.addColorStop(0.22,'rgba(195,255,245,0.10)');
+    rg.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle = rg;
+    ctx.beginPath(); ctx.arc(x,y,120,0,Math.PI*2); ctx.fill();
+
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = 'rgba(230,255,252,0.45)';
+    ctx.beginPath(); ctx.arc(x,y, (10+6*pulse)*0.18, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawBubbles(t, dt){
+    for(let i=bubbles.length-1;i>=0;i--){
+      const b = bubbles[i];
+      b.life += dt;
+      b.wob += dt*0.002;
+      b.y -= 0.030*dt;
+      b.x += Math.sin(b.wob)*0.05*dt;
+      const p = clamp01(b.life / b.maxLife);
+      const a = (1-p)*0.40;
+      const rr = b.r*(0.75 + 0.25*(1-p));
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = 'rgba(190,235,255,0.55)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, rr, 0, Math.PI*2);
+      ctx.stroke();
+      ctx.restore();
+
+      if (b.life >= b.maxLife) bubbles.splice(i,1);
+    }
+  }
+
+  // More "photo-like" fish: tapered body + specular highlight
+  function drawFish(f){
+    const dx = f.x - pointer.x, dy = f.y - pointer.y;
+    const d = Math.hypot(dx,dy);
+    const near = 1 - Math.min(1, d / (Math.min(W,H)*0.75));
+    const spd = Math.hypot(f.vx,f.vy);
+
+    // Silvery school look: mostly desaturated, brighter when close/fast
+    const hue = 195 + f.hueSeed*18 + Math.min(18, spd*10);
+    const sat = lerp(6, 28, Math.pow(near,0.9));
+    const lit = lerp(48, 76, Math.pow(near,0.85));
+    const alpha = lerp(0.25, 0.95, Math.pow(near,0.65));
+
+    const ang = Math.atan2(f.vy, f.vx);
+    const s = f.size;
+
+    ctx.save();
+    ctx.translate(f.x, f.y);
+    ctx.rotate(ang);
+
+    // body gradient (dark back -> bright belly)
+    const bodyGrad = ctx.createLinearGradient(-s*2.2, -s*0.6, s*2.0, s*0.8);
+    bodyGrad.addColorStop(0, `hsla(${hue},${sat}%,${lit-16}%,${alpha})`);
+    bodyGrad.addColorStop(0.55, `hsla(${hue},${sat}%,${lit}%,${alpha})`);
+    bodyGrad.addColorStop(1, `hsla(${hue},${sat}%,${lit+8}%,${alpha})`);
+
+    // tapered body path
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.moveTo(s*2.2, 0);                 // nose
+    ctx.quadraticCurveTo(s*1.0, -s*0.95, -s*1.1, -s*0.75);
+    ctx.quadraticCurveTo(-s*2.1, -s*0.15, -s*2.4, 0);
+    ctx.quadraticCurveTo(-s*2.1,  s*0.15, -s*1.1,  s*0.75);
+    ctx.quadraticCurveTo(s*1.0,  s*0.95, s*2.2, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // fork tail
+    ctx.fillStyle = `hsla(${hue},${sat}%,${lit-8}%,${alpha*0.95})`;
+    ctx.beginPath();
+    ctx.moveTo(-s*2.35, 0);
+    ctx.lineTo(-s*3.15, -s*0.75);
+    ctx.lineTo(-s*2.75, 0);
+    ctx.lineTo(-s*3.15,  s*0.75);
+    ctx.closePath();
+    ctx.fill();
+
+    // specular highlight
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = alpha*0.22;
+    ctx.strokeStyle = 'rgba(240,250,255,1)';
+    ctx.lineWidth = Math.max(1, s*0.12);
+    ctx.beginPath();
+    ctx.moveTo(s*1.5, -s*0.25);
+    ctx.quadraticCurveTo(0, -s*0.55, -s*1.8, -s*0.25);
+    ctx.stroke();
+    ctx.globalCompositeOperation = 'source-over';
+
+    // subtle eye
+    if (s > 3.6){
+      ctx.globalAlpha = alpha*0.7;
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.beginPath();
+      ctx.arc(s*1.55, -s*0.10, Math.max(0.8, s*0.12), 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  // Simulation: thermal plume + bubbles + schooling (alignment/cohesion/separation)
+  function step(dt, t){
+    // bubble spawn: ~1/s with jitter and slight dependence on motion
+    const mv = Math.hypot(pointer.vx, pointer.vy);
+    const motion01 = clamp01(mv * 60);
+    const targetHz = 1.0 * (0.85 + 0.35*motion01);
+    bubbleAcc += dt * (targetHz/1000);
+    while (bubbleAcc >= 1.0){
+      bubbleAcc -= 1.0;
+      spawnBubbleCluster(pointer.x, pointer.y);
+      if (soundOn && audio && Math.random() < 0.45){
+        audio.bubbleTick(0.35 + 0.4*motion01);
+      }
+    }
+
+    // fish count reconcile gradually
+    reconcileFishCount();
+
+    // rebuild spatial grid for neighbors
+    rebuildGrid(fish);
+
+    const speedFactor = SPEED;
+
+    // Tuning for "school" look (not too tight near pointer)
+    const alignW   = 0.55;
+    const cohW     = 0.22;
+    const sepW     = 1.15;
+
+    const plumeAttractW = 0.95;     // lower than before -> less dense near pointer
+    const plumeRiseW    = 0.38;
+    const plumeShearW   = 0.50;
+
+    const baseDrag = 0.92;
+    const accel = 0.090;
+    const stepK = 0.090;
+
+    for (let i=0;i<fish.length;i++){
+      const f = fish[i];
+
+      // occasional breakout (prevents stable orbit)
+      if (f.breakout > 0) f.breakout -= dt;
+      else if (Math.random() < 0.0016) f.breakout = rand(500, 1400);
+
+      // gather neighbors (cap to keep perf stable)
+      const cx = clamp(Math.floor(f.x / cellSize), 0, gridW-1);
+      const cy = clamp(Math.floor(f.y / cellSize), 0, gridH-1);
+      let count = 0;
+
+      let ax=0, ay=0;
+      let avx=0, avy=0;
+      let cox=0, coy=0;
+      let sepX=0, sepY=0;
+
+      for (let oy=-1; oy<=1; oy++){
+        const yy = cy + oy;
+        if (yy < 0 || yy >= gridH) continue;
+        for (let ox=-1; ox<=1; ox++){
+          const xx = cx + ox;
+          if (xx < 0 || xx >= gridW) continue;
+          const cell = grid[yy*gridW + xx];
+          for (let k=0; k<cell.length; k++){
+            const j = cell[k];
+            if (j === i) continue;
+            const o = fish[j];
+            const dx = o.x - f.x;
+            const dy = o.y - f.y;
+            const d2 = dx*dx + dy*dy;
+            if (d2 > 60*60) continue; // neighbor radius
+            const d = Math.sqrt(d2) + 1e-6;
+
+            avx += o.vx; avy += o.vy;           // alignment
+            cox += o.x;  coy += o.y;            // cohesion
+
+            // separation (stronger close)
+            const sepRad = (f.size > 3.6 ? 30 : 22);
+            if (d < sepRad){
+              const push = (sepRad - d) / sepRad;
+              sepX -= (dx/d) * push;
+              sepY -= (dy/d) * push;
+            }
+
+            count++;
+            if (count >= 18) break;
+          }
+          if (count >= 18) break;
+        }
+        if (count >= 18) break;
+      }
+
+      // schooling forces
+      if (count > 0){
+        const inv = 1 / count;
+        // alignment: steer toward average heading
+        const mvx = avx*inv, mvy = avy*inv;
+        ax += (mvx - f.vx) * alignW;
+        ay += (mvy - f.vy) * alignW;
+
+        // cohesion: steer toward center of mass (very mild)
+        const mx = cox*inv, my = coy*inv;
+        ax += (mx - f.x) * 0.0009 * cohW;
+        ay += (my - f.y) * 0.0009 * cohW;
+
+        // separation
+        ax += sepX * sepW;
+        ay += sepY * sepW;
+      }
+
+      // thermal plume field
+      const pdx = pointer.x - f.x;
+      const pdy = pointer.y - f.y;
+      const dist = Math.max(1, Math.hypot(pdx,pdy));
+      const ux = pdx/dist, uy = pdy/dist;
+      const heat = Math.exp(-dist/260);
+
+      // attraction (reduced near core to avoid dense packing)
+      ax += ux * heat * plumeAttractW;
+      ay += uy * heat * plumeAttractW;
+
+      // rise direction follows slight bias to "up" plus mouse motion
+      const driftX = lerp(0, clamp(pointer.vx*140, -1, 1), 0.35);
+      const driftY = lerp(-1, clamp(pointer.vy*140, -1, 1), 0.25);
+      ax += driftX * heat * plumeRiseW;
+      ay += driftY * heat * plumeRiseW;
+
+      // shear to create swirling school shape, not a ring
+      const tangX = -uy, tangY = ux;
+      const n = fbm((f.x*0.004) + t*0.00007, (f.y*0.004) + t*0.00005);
+      const shear = (n - 0.5) * plumeShearW;
+      ax += tangX * heat * shear;
+      ay += tangY * heat * shear;
+
+      // random micro-wander (keeps it organic / less dense)
+      f.phase += dt * 0.002;
+      const wig = (Math.sin(f.phase + f.hueSeed*6.28) + (n-0.5)) * 0.18 * f.wander;
+      ax += wig;
+      ay += -wig*0.6;
+
+      // breakout: temporary tangential push
+      if (f.breakout > 0){
+        const p = f.breakout / 1400;
+        ax += tangX * 0.35 * p;
+        ay += tangY * 0.35 * p;
+      }
+
+      // bubble attraction for ~46% fish (your 35–50% target)
+      if (f.bubbleAffinity < 0.46 && bubbles.length){
+        let bxSum = 0, bySum = 0, bCount = 0;
+        for (let bi=0; bi<bubbles.length; bi++){
+          const b = bubbles[bi];
+          const bdx = b.x - f.x;
+          const bdy = b.y - f.y;
+          const bd = Math.hypot(bdx,bdy);
+          if (bd < b.rad){
+            const p = clamp01(b.life / b.maxLife);
+            const w = (1 - p) * b.strength * (1 - bd / b.rad);
+            bxSum += (bdx/(bd+1))*w;
+            bySum += (bdy/(bd+1))*w;
+            bCount++;
+          }
+          if (bCount >= 3) break;
+        }
+        if (bCount){
+          ax += bxSum * 0.80;
+          ay += bySum * 0.80;
+        }
+      }
+
+      // extra anti-clumping near pointer core: push outward if too close
+      if (dist < 60){
+        const push = (60 - dist) / 60;
+        ax -= ux * 1.8 * push;
+        ay -= uy * 1.8 * push;
+      }
+
+      // apply velocity with damping
+      const drag = baseDrag + (f.size > 3.6 ? 0.00 : 0.02);
+      f.vx = (f.vx + ax * dt * accel * speedFactor) * drag;
+      f.vy = (f.vy + ay * dt * accel * speedFactor) * drag;
+
+      // clamp speed
+      const v = Math.hypot(f.vx,f.vy) || 1;
+      const vmax = (f.size > 3.6 ? 16 : 13) * speedFactor;
+      if (v > vmax){
+        f.vx = (f.vx/v)*vmax;
+        f.vy = (f.vy/v)*vmax;
+      }
+
+      // integrate
+      f.x += f.vx * dt * stepK;
+      f.y += f.vy * dt * stepK;
+
+      // wrap
+      if (f.x < -60) f.x = W + 60;
+      else if (f.x > W + 60) f.x = -60;
+      if (f.y < -60) f.y = H + 60;
+      else if (f.y > H + 60) f.y = -60;
+    }
+  }
+
+  // ---------- Main loop ----------
+  let lastT = performance.now();
+  function frame(){
+    const t = performance.now();
+    const dt = Math.min(50, t - lastT);
+    lastT = t;
+
+    drawBackground(t);
+    drawSnow(t);
+    drawThermalCore(t);
+
+    step(dt, t);
+    drawBubbles(t, dt);
+
+    // draw: small then big fish for depth
+    for (let pass=0; pass<2; pass++){
+      for (const f of fish){
+        const isBig = f.size > 3.6;
+        if ((pass===0 && !isBig) || (pass===1 && isBig)){
+          drawFish(f);
+        }
+      }
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- Boot ----------
+  resize();
+  initSnow();
+  initSpatial();
+  // spawn fish AFTER spatial init
+  fish.length = 0;
+  spawnFish(targetFishCount);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
