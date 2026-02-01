@@ -22,23 +22,37 @@
 
     .hud {
       position: fixed;
-      top: 12px;
-      right: 12px;
+      top: 10px;
+      right: 10px;
+      left: 10px;
       display: flex;
-      gap: 10px;
+      justify-content: space-between;
+      gap: 8px;
       align-items: center;
-      padding: 6px 10px;
+      padding: 8px 12px;
       border-radius: 12px;
-      background: rgba(8, 18, 30, 0.50);
+      background: rgba(8, 18, 30, 0.45);
       border: 1px solid rgba(255, 255, 255, 0.10);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       color: rgba(235, 245, 255, 0.88);
-      font: 12px/1 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      font: 11px/1 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
       letter-spacing: .2px;
-      opacity: .85;
+      opacity: .95;
       z-index: 10;
     }
+
+    @media (min-width: 600px) {
+      .hud {
+        left: auto;
+        top: 12px;
+        right: 12px;
+        width: auto;
+        font-size: 12px;
+        gap: 10px;
+      }
+    }
+
 
     .hud .grp {
       display: flex;
@@ -73,20 +87,35 @@
     .hint {
       position: fixed;
       left: 50%;
-      bottom: 14px;
+      bottom: 20px;
+      width: 80%;
+      max-width: 320px;
+      text-align: center;
       transform: translateX(-50%);
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: rgba(8, 18, 30, 0.35);
-      border: 1px solid rgba(255, 255, 255, 0.10);
+      padding: 10px 14px;
+      border-radius: 18px;
+      background: rgba(8, 18, 30, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.12);
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
-      color: rgba(235, 245, 255, 0.72);
-      font: 12px/1 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: rgba(235, 245, 255, 0.75);
+      font: 11px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
       opacity: .92;
       pointer-events: none;
       transition: opacity .8s ease;
+      z-index: 10;
     }
+
+    @media (min-width: 600px) {
+      .hint {
+        bottom: 14px;
+        width: auto;
+        font-size: 12px;
+        padding: 6px 10px;
+        border-radius: 999px;
+      }
+    }
+
 
     .hint.off {
       opacity: 0
@@ -217,17 +246,31 @@
         }
         ctx.restore();
       }
-      let W = innerWidth, H = innerHeight, DPR = 1;
+      let W = innerWidth, H = innerHeight, DPR = 1, VIEW_SCALE = 1;
+
       function resize() {
         DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
         W = innerWidth; H = innerHeight;
+
+        // Dynamic view scale for narrow screens
+        VIEW_SCALE = W < 600 ? lerp(1.2, 1.0, clamp01((W - 320) / 280)) : 1.0;
+
         canvas.width = Math.floor(W * DPR);
         canvas.height = Math.floor(H * DPR);
         canvas.style.width = W + 'px';
         canvas.style.height = H + 'px';
         ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+        // Re-calculate density if needed
+        const screenArea = (W * H) / (1920 * 1080);
+        const baseCount = isMobile ? 400 : 800;
+        targetFishCount = Math.floor(baseCount * Math.sqrt(screenArea + 0.5));
+        targetFishCount = clamp(targetFishCount, isMobile ? 300 : 500, 2000);
+        updateHud();
+
         initSpatial();
       }
+
       addEventListener('resize', resize, { passive: true });
 
       // ---------- Pointer ----------
@@ -569,16 +612,19 @@
         const endX = side < 0 ? W + selected.size[1] : -selected.size[1];
         const y = rand(H * 0.15, H * 0.80);
 
-        // Slight vertical movement
-        const yDrift = rand(-0.25, 0.25);
+        // Adjust speed for narrow screens to avoid "flash-by"
+        const speedScale = W < H ? 0.75 : 1.0;
+        const speed = rand(selected.speed[0], selected.speed[1]) * speedScale;
 
+        // Slight vertical movement - more vertical on portrait
+        const yDrift = rand(-0.3, 0.3) * (W < H ? 1.5 : 1.0);
         return {
           type: selected.type,
           x: startX,
           y: y,
           targetX: endX,
           size: rand(selected.size[0], selected.size[1]),
-          speed: rand(selected.speed[0], selected.speed[1]),
+          speed: speed,
           direction: -side,
           yDrift: yDrift,
           phase: rand(0, Math.PI * 2),
@@ -589,6 +635,7 @@
           attractStrength: isMassive ? rand(0.25, 0.45) : rand(0.18, 0.35)
         };
       }
+
 
       function updateMegafauna(dt) {
         // Spawn timer - frequent spawning
@@ -2530,8 +2577,8 @@
         // Heading is smoothly turned in physics via rate-limited turning — use it directly
         const ang = f.heading !== undefined ? f.heading : Math.atan2(f.vy, f.vx);
 
-        // Size with depth scaling
-        const s = f.size * depthScale;
+        // Size with depth scaling and dynamic view scaling
+        const s = f.size * depthScale * VIEW_SCALE;
 
         // Body undulation - S-curve wave traveling down the body
         if (!f.bodyPhase) f.bodyPhase = Math.random() * Math.PI * 2;
