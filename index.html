@@ -208,36 +208,37 @@
         return f;
       }
 
-      // ---------- Resize / DPR ----------
-      let W = innerWidth, H = innerHeight, DPR = 1;
-      function resize() {
-        DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-        W = innerWidth; H = innerHeight;
-        canvas.width = Math.floor(W * DPR);
-        canvas.height = Math.floor(H * DPR);
-        canvas.style.width = W + 'px';
-        canvas.style.height = H + 'px';
-        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-        initSpatial();
-      }
-      addEventListener('resize', resize, { passive: true });
-
       // ---------- Pointer ----------
-      const pointer = { x: W * 0.5, y: H * 0.5, vx: 0, vy: 0, lastT: performance.now(), idle: 0 };
+      const pointer = {
+        x: W * 0.5, y: H * 0.5,
+        rawX: W * 0.5, rawY: H * 0.5,
+        vx: 0, vy: 0,
+        lastT: performance.now(), idle: 0
+      };
       let lastPointerMove = performance.now();
 
       addEventListener('pointermove', (e) => {
-        const now = performance.now();
-        const dt = Math.max(1, now - pointer.lastT);
-        const nx = e.clientX, ny = e.clientY;
-        pointer.vx = (nx - pointer.x) / dt;
-        pointer.vy = (ny - pointer.y) / dt;
-        pointer.x = nx; pointer.y = ny; pointer.lastT = now;
+        pointer.rawX = e.clientX;
+        pointer.rawY = e.clientY;
         pointer.idle = 0;
-        lastPointerMove = now;
-        hint.classList.remove('visible'); // Hide hint when mouse moves
-        startHintTimer(); // Restart timer to show hint after 3s idle
+        hint.classList.remove('visible');
+        startHintTimer();
       }, { passive: true });
+
+      function updatePointerSmoothing(dt) {
+        const now = performance.now();
+        const pdt = Math.max(1, now - pointer.lastT);
+        const oldX = pointer.x, oldY = pointer.y;
+
+        // --- SMOOTHING: Low-pass filter for pointer position ---
+        const lerpFactor = 1 - Math.pow(0.001, dt / 100); // Smooth follow
+        pointer.x = lerp(pointer.x, pointer.rawX, lerpFactor);
+        pointer.y = lerp(pointer.y, pointer.rawY, lerpFactor);
+
+        pointer.vx = (pointer.x - oldX) / pdt;
+        pointer.vy = (pointer.y - oldY) / pdt;
+        pointer.lastT = now;
+      }
 
       // ---------- Pointer Click Interaction ----------
       const collectibles = [];
@@ -2651,41 +2652,47 @@
           let cox = 0, coy = 0;
           let sepX = 0, sepY = 0;
 
-          // Neighbor search
+          // Neighbor search - OPTIMIZED
+          const searchRadius = 60;
+          const searchRadiusSq = searchRadius * searchRadius;
+          const sepRadLarge = 45;
+          const sepRadNormal = 32;
+          const sepRadSmall = 25;
+
           for (let oy = -1; oy <= 1; oy++) {
             const yy = cy + oy;
             if (yy < 0 || yy >= gridH) continue;
+            const rowOffset = yy * gridW;
             for (let ox = -1; ox <= 1; ox++) {
               const xx = cx + ox;
               if (xx < 0 || xx >= gridW) continue;
-              const cell = grid[yy * gridW + xx];
-              for (let k = 0; k < cell.length; k++) {
+              const cell = grid[rowOffset + xx];
+              const cellLen = cell.length;
+              for (let k = 0; k < cellLen; k++) {
                 const j = cell[k];
                 if (j === i) continue;
                 const o = fish[j];
                 const dx = o.x - f.x;
                 const dy = o.y - f.y;
                 const d2 = dx * dx + dy * dy;
-                if (d2 > 60 * 60) continue;
+                if (d2 > searchRadiusSq) continue;
                 const d = Math.sqrt(d2) + 1e-6;
 
                 avx += o.vx; avy += o.vy;
                 cox += o.x; coy += o.y;
 
-                // Separation - larger fish need more space
-                const sepRad = f.isLarge ? 45 : (f.size > 4 ? 32 : 25);
+                const sepRad = f.isLarge ? sepRadLarge : (f.size > 4 ? sepRadNormal : sepRadSmall);
                 if (d < sepRad) {
                   const push = (sepRad - d) / sepRad;
                   sepX -= (dx / d) * push;
                   sepY -= (dy / d) * push;
                 }
-
                 count++;
-                if (count >= 18) break;
+                if (count >= 12) break; // Reduced neighbor cap for performance
               }
-              if (count >= 18) break;
+              if (count >= 12) break;
             }
-            if (count >= 18) break;
+            if (count >= 12) break;
           }
 
 
@@ -2968,65 +2975,67 @@
       }
 
       // ============================================================
-      // MAIN LOOP
+      // MAIN LOOP - Fixed Timestep Accumulator
       // ============================================================
       let lastT = performance.now();
+      let accumulator = 0;
+      const SIM_STEP = 1000 / 60; // 60Hz fixed physics step
 
       function frame() {
         const t = performance.now();
-        const dt = Math.min(50, t - lastT);
+        let dt = t - lastT;
+        if (dt > 100) dt = 16.67; // Cap delta to prevent spiral of death
         lastT = t;
 
-        // Background layers
+        accumulator += dt;
+
+        // Background layers (Render once per frame)
         drawBackground(t);
         drawGodRays(t);
 
-        // Megafauna in deep background (behind everything else)
-        updateMegafauna(dt);
-        drawMegafauna(t);
+        // Update smoothing
+        updatePointerSmoothing(dt);
 
+        // Fixed timestep simulation
+        while (accumulator >= SIM_STEP) {
+          step(SIM_STEP, t);
+          updateMegafauna(SIM_STEP);
+          updateEventDirector(SIM_STEP, t);
+          updateMicroSurprises(SIM_STEP, t);
+          updatePredator(SIM_STEP);
+          accumulator -= SIM_STEP;
+        }
+
+        // Remaining render calls...
+        drawMegafauna(t);
         drawSnow(t);
         drawCurrentLines(t);
         drawThermalCore(t);
         drawFlowParticles();
-        drawTrail(); // Rainbow trail
+        drawTrail();
         drawEventEffects(t);
         drawDensityGlow();
         drawSchoolFlash();
-
-        // Micro-surprises (spawn & update collectibles, fish fry, notifications)
-        updateMicroSurprises(dt, t);
-        updateTrail(dt); // Rainbow trail logic
-
-        // Predator: update state, draw shark shadow behind fish school
-        updatePredator(dt);
+        updateTrail(dt);
         drawPredator();
-
-        // Simulation
-        step(dt, t);
         drawBubbles(t, dt);
 
-        // Fish rendered by depth layer: background -> midground -> foreground
-        // Then within each layer: small -> large
         const depthOrder = ['background', 'midground', 'foreground'];
         for (const layer of depthOrder) {
           for (let pass = 0; pass < 2; pass++) {
             for (const f of fish) {
               if ((f.depthLayer || 'midground') !== layer) continue;
-              const isLargePass = pass === 1;
-              if (f.isLarge !== isLargePass) continue;
+              if (f.isLarge !== (pass === 1)) continue;
               drawFish(f, t);
             }
           }
         }
 
-        // Foreground micro-surprise visuals (drawn above fish school)
         drawFishFry(t);
         drawCollectibles(t);
         drawCollectionNotifications(t);
-
-        // Predator light-wave rings + victory flash (foreground, above everything)
         drawPredatorWaves();
+
         if (events.flashTimer > 0) {
           const efp = 1 - events.flashTimer / 800;
           ctx.save();
