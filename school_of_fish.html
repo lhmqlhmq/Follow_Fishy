@@ -495,17 +495,17 @@
         breathPhase: 0,
         breathSpeed: 0.0008,
 
-        // Wave propagation origin
-        waveOrigin: { x: W * 0.5, y: H * 0.5 },
+        // Wave propagation origin (init with real window center to avoid NaN)
+        waveOrigin: { x: window.innerWidth * 0.5, y: window.innerHeight * 0.5 },
         waveTime: 0,
 
         // Speed modulation
         speedPhase: 0,
         speedMod: 1.0,
 
-        // School center tracking
-        centerX: W * 0.5,
-        centerY: H * 0.5,
+        // School center tracking (init with real window center to avoid NaN)
+        centerX: window.innerWidth * 0.5,
+        centerY: window.innerHeight * 0.5,
 
         // Flash effect when turning
         flashIntensity: 0,
@@ -1618,7 +1618,7 @@
       // ============================================================
       // DENSITY GLOW (Glow where fish congregate)
       // ============================================================
-      let densityCenter = { x: W / 2, y: H / 2, strength: 0 };
+      let densityCenter = { x: window.innerWidth / 2, y: window.innerHeight / 2, strength: 0 };
 
       function updateDensityGlow() {
         if (fish.length === 0) return;
@@ -1676,7 +1676,7 @@
 
       // Draw school flash effect when turning
       function drawSchoolFlash() {
-        if (!migration.flashIntensity || migration.flashIntensity < 0.05) return;
+        if (!migration.flashIntensity || migration.flashIntensity < 0.05 || !isFinite(migration.centerX)) return;
 
         ctx.save();
         ctx.globalCompositeOperation = 'screen';
