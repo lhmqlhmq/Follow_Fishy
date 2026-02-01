@@ -10,7 +10,7 @@ export const audio = {
       this.masterGain.gain.value = 1.0; // Default
       this.masterGain.connect(this.context.destination);
     }
-    if (this.context.state === 'suspended') this.context.context.resume();
+    if (this.context.state === 'suspended') this.context.resume();
     return this.context;
   },
 
@@ -126,7 +126,7 @@ export const audio = {
     if (!this.enabled) return;
     const ctx = this.init();
     const t = ctx.currentTime;
-    
+
     [440, 554, 659, 880].forEach((f, i) => {
       const o = ctx.createOscillator();
       const g = ctx.createGain();
