@@ -1343,10 +1343,10 @@
         const dx = f.x - s.x, dy = f.y - s.y;
         const dist = Math.hypot(dx, dy) || 1;
 
-        // PANIC RESPONSE: Extremely high speed and tight concentration
+        // PANIC RESPONSE: Defensive balling - moderate repulsion, extreme cohesion
         const isLunge = s.state === "LUNGING";
-        const repStr = isLunge ? 150.0 : 80.0; // Significant boost for "High Speed" feel
-        const range = isLunge ? 550 : 420;    // Wider range of influence
+        const repStr = isLunge ? 40.0 : 20.0; // Lowered to keep school from exploding
+        const range = isLunge ? 580 : 450;    // Wide sensing, but gentle push
 
         let fx = 0, fy = 0;
         if (dist < range) {
@@ -1354,11 +1354,11 @@
           fx = (dx / dist) * ratio * repStr;
           fy = (dy / dist) * ratio * repStr;
 
-          // Swirl and focus induction (EXTREME school concentration)
+          // Swirl and focus induction (SUPREME school concentration)
           const cdx = migration.centerX - f.x, cdy = migration.centerY - f.y;
           const cd = Math.hypot(cdx, cdy) || 1;
-          const swirlStr = (isLunge ? 45.0 : 25.0) * (1 - dist / range);
-          const concentrateStr = (isLunge ? 80.0 : 45.0) * (1 - dist / range);
+          const swirlStr = (isLunge ? 40.0 : 25.0) * (1 - dist / range);
+          const concentrateStr = (isLunge ? 120.0 : 80.0) * (1 - dist / range);
           fx += (-cdy / cd) * swirlStr + (cdx / cd) * concentrateStr;
           fy += (cdx / cd) * swirlStr + (cdy / cd) * concentrateStr;
         }
@@ -3314,10 +3314,9 @@
         const accel = 0.08;          // Acceleration scale
         const stepK = 0.10;
 
-        // Predator panic: weaken cohesion & plume so the school scatters chaotically
         const panicActive = predator.active && predator.shark && !predator.shark.fleeing;
-        const cohesionMod = panicActive ? 0.10 : 1.0; // scatter: almost no group cohesion
-        const plumeMod = panicActive ? 0.18 : 1.0; // scatter: ignore thermal plume
+        const cohesionMod = 1.0; // Use panicMod in forces below
+        const plumeMod = 1.0;
 
         for (let i = 0; i < fish.length; i++) {
           const f = fish[i];
@@ -3401,17 +3400,18 @@
                 const o = fish[j];
                 const dx = o.x - f.x;
                 const dy = o.y - f.y;
+                const predatorActive = predator.active && predator.shark;
+                const searchRadius = predatorActive ? 220 : 60; // Even larger detection for school-wide pull
                 const d2 = dx * dx + dy * dy;
-                if (d2 > 60 * 60) continue;
+                if (d2 > searchRadius * searchRadius) continue;
                 const d = Math.sqrt(d2) + 1e-6;
 
                 avx += o.vx; avy += o.vy;
                 cox += o.x; coy += o.y;
 
                 // Separation - larger fish need more space
-                const predatorActive = predator.active && predator.shark;
                 let sepRad = f.isLarge ? 45 : (f.size > 4 ? 32 : 25);
-                if (predatorActive) sepRad *= 0.4; // Allow much tighter packing during shark attack
+                if (predatorActive) sepRad *= 0.25; // Ultra-dense packing
 
                 if (d < sepRad) {
                   const push = (sepRad - d) / sepRad;
@@ -3420,11 +3420,12 @@
                 }
 
                 count++;
-                if (count >= 18) break;
+                const maxNeighbors = predatorActive ? 60 : 18;
+                if (count >= maxNeighbors) break;
               }
-              if (count >= 18) break;
+              if (count >= (predatorActive ? 60 : 18)) break;
             }
-            if (count >= 18) break;
+            if (count >= (predatorActive ? 60 : 18)) break;
           }
 
           // Schooling forces
@@ -3434,14 +3435,14 @@
             const mx = cox * inv, my = coy * inv;
 
             const predatorActive = predator.active && predator.shark;
-            const panicMod = predatorActive ? 8.0 : 1.0; // Extreme school tightening
+            const panicMod = predatorActive ? 12.0 : 1.0; // Extreme school tightening
 
             // Standardize gating for all schooling forces
             if (!(f.suppressAttraction > 0)) {
-              ax += (mvx - f.vx) * p_alignW * cohesionMod * panicMod;
-              ay += (mvy - f.vy) * p_alignW * cohesionMod * panicMod;
-              ax += (mx - f.x) * 0.0009 * p_cohW * cohesionMod * panicMod;
-              ay += (my - f.y) * 0.0009 * p_cohW * cohesionMod * panicMod;
+              ax += (mvx - f.vx) * p_alignW * cohesionMod * panicMod * 2.0;
+              ay += (mvy - f.vy) * p_alignW * cohesionMod * panicMod * 2.0;
+              ax += (mx - f.x) * 0.05 * p_cohW * cohesionMod * panicMod; // 20x boost to attraction base
+              ay += (my - f.y) * 0.05 * p_cohW * cohesionMod * panicMod;
             } else {
               // During expansion, apply a slight separation boost to enhance scattering
               ax += sepX * 1.5;
