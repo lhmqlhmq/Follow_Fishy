@@ -1287,13 +1287,20 @@
           s.y += s.vy * dt * 0.15;
           s.phase += dt * (0.01 + moveSpd * 0.008);
 
-          // Interaction (flee meter logic)
+          // Interaction (flee/exit logic)
           const curDist = Math.hypot(pointer.x - s.x, pointer.y - s.y);
-          if (curDist < 260 && s.entryProgress > 0.45 && pointer.idle < 3000) {
+
+          // SCARING AWAY: Trigger exit if user moves mouse/touches
+          if (pointer.idle < 500 && s.entryProgress > 0.5) {
+            s.fleeing = true; s.fleeProgress = 0;
+            s.exitDx = s.x < W * 0.5 ? -1 : 1;
+            s.exitDy = (Math.random() - 0.5) * 0.5;
+          } else if (curDist < 260 && s.entryProgress > 0.45) {
             if (Math.random() < dt * 0.0038)
               predator.lightWaves.push({ x: pointer.x, y: pointer.y, r: 0, life: 0, maxLife: 680 });
             s.fleeMeter += (1 - curDist / 260) ** 2 * dt * 0.00015;
           }
+
           if (s.fleeMeter >= 1 || s.life >= s.maxLife) {
             s.fleeing = true; s.fleeProgress = 0;
             s.exitDx = s.x < W * 0.5 ? -1 : 1;
