@@ -1251,23 +1251,23 @@
 
           let moveSpd = 1.4;
 
-          // 1. PATROLLING: Slow circle at distance
+          // 1. PATROLLING: Slow circle at distance (REDUCED RADIUS for visibility)
           if (s.state === "PATROLLING") {
             const angle = s.wanderPhase * 0.4;
-            s.targetOffsetX = Math.cos(angle) * 700;
-            s.targetOffsetY = Math.sin(angle) * 550;
-            moveSpd = 1.4 + (Math.hypot(s.x - mx, s.y - my) < 400 ? 0.8 : 0);
+            s.targetOffsetX = Math.cos(angle) * 420;
+            s.targetOffsetY = Math.sin(angle) * 320;
+            moveSpd = 1.4 + (Math.hypot(s.x - mx, s.y - my) < 300 ? 0.8 : 0);
             if (s.stateTimer < 0) {
               s.state = "COILING";
               s.stateTimer = 6000 + Math.random() * 4000;
             }
           }
-          // 2. COILING: Spiral in, compressing the ball
+          // 2. COILING: Spiral in, compressing the ball (MODERATED)
           else if (s.state === "COILING") {
             const spiralProg = 1 - Math.max(0, s.stateTimer / 8000);
             const angle = s.wanderPhase * (0.5 + spiralProg * 0.3);
-            const radiusX = 650 * (1 - spiralProg * 0.7);
-            const radiusY = 500 * (1 - spiralProg * 0.7);
+            const radiusX = 420 * (1 - spiralProg * 0.5);
+            const radiusY = 320 * (1 - spiralProg * 0.5);
             s.targetOffsetX = Math.cos(angle) * radiusX;
             s.targetOffsetY = Math.sin(angle) * radiusY;
             moveSpd = 1.8 + spiralProg * 1.5;
@@ -1387,20 +1387,19 @@
         if (dist < vacuumRange) {
           if (dist < bodyRange) {
             // Hard Repulsion (Inside the shark)
-            const ratio = (1 - dist / bodyRange) ** 1.5;
-            fx = (dx / dist) * ratio * (isStrike ? 180 : 100);
-            fy = (dy / dist) * ratio * (isStrike ? 180 : 100);
+            const ratio = (1 - dist / bodyRange) ** 1.8;
+            fx = (dx / dist) * ratio * (isStrike ? 160 : 85);
+            fy = (dy / dist) * ratio * (isStrike ? 160 : 85);
           } else {
-            // VACUOLE PULL: Pull fish towards the edge of the path to maintain the "ball"
-            const vacuumMid = (bodyRange + vacuumRange) * 0.45;
+            // VACUOLE FORMATION: Smooth clearing and reforming
+            const vacuumMid = (bodyRange + vacuumRange) * 0.5;
             const pullRatio = Math.max(0, 1 - Math.abs(dist - vacuumMid) / (vacuumRange - bodyRange));
-            const cdx = migration.centerX - f.x, cdy = migration.centerY - f.y;
-            const cd = Math.hypot(cdx, cdy) || 1;
 
-            // Pull slightly sideways and towards school center to "reform" the wall
-            const concentrate = (isStrike ? 60 : 35) * pullRatio;
-            fx = (cdx / cd) * concentrate;
-            fy = (cdy / cd) * concentrate;
+            // Pull slightly sideways and AWAY to create the "ring" wall
+            const concentrate = (isStrike ? 45 : 25) * pullRatio;
+            const nx = -dy / dist, ny = dx / dist; // Perpendicular
+            fx = (dx / dist) * concentrate * 0.5 + nx * concentrate * 0.3;
+            fy = (dy / dist) * concentrate * 0.5 + ny * concentrate * 0.3;
           }
 
           // Add swirl for dynamic "bait ball" look
@@ -3483,14 +3482,14 @@
             const mvx = avx * inv, mvy = avy * inv;
             const mx = cox * inv, my = coy * inv;
 
-            const panicMod = predatorActive ? 12.0 : 1.0; // Extreme school tightening
+            const panicMod = predatorActive ? 6.0 : 1.0; // Moderated tightening to prevent linear collapse
 
             // Standardize gating for all schooling forces
             if (!(f.suppressAttraction > 0)) {
-              ax += (mvx - f.vx) * p_alignW * cohesionMod * panicMod * 2.0;
-              ay += (mvy - f.vy) * p_alignW * cohesionMod * panicMod * 2.0;
-              ax += (mx - f.x) * 0.05 * p_cohW * cohesionMod * panicMod; // 20x boost to attraction base
-              ay += (my - f.y) * 0.05 * p_cohW * cohesionMod * panicMod;
+              ax += (mvx - f.vx) * p_alignW * cohesionMod * panicMod * 1.5;
+              ay += (mvy - f.vy) * p_alignW * cohesionMod * panicMod * 1.5;
+              ax += (mx - f.x) * 0.008 * p_cohW * cohesionMod * panicMod; // 3x boost instead of 20x
+              ay += (my - f.y) * 0.008 * p_cohW * cohesionMod * panicMod;
             } else {
               // During expansion, apply a slight separation boost to enhance scattering
               ax += sepX * 1.5;
