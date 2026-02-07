@@ -4,6 +4,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="icon"
+    href="data:image/x-icon;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQEAAAAMBx18grAAAAAnRSTlMAAHaTzTgAAAAKSURBVAjXY2AAAwAAfAABpf6Y4QAAAABJRU5ErkJggg==">
   <title>Deep Ocean School — Enhanced</title>
   <style>
     html,
@@ -152,6 +154,7 @@
 </head>
 
 <body>
+
   <canvas id="c"></canvas>
 
   <div class="hud">
@@ -221,7 +224,8 @@
         dayCycle: 0, // 0: night, 0.5: day, 1: night
         daySpeed: 0.0001,
         lighting: 1.0,
-        autonomousMode: 0 // 0 = following mouse, 1 = autonomous schooling
+        autonomousMode: 0, // 0 = following mouse, 1 = autonomous schooling
+        followingMegafauna: null
       };
 
 
@@ -302,6 +306,7 @@
         updateHud();
 
         initSpatial();
+        initJellyfish();
       }
 
 
@@ -373,6 +378,9 @@
         }
         if (hitFish && !hitFish.response) triggerFishResponse(hitFish, cx, cy);
         else triggerLocalScatter(cx, cy);
+
+        // Click sound for every interaction
+        if (soundOn && audio) audio.bubbleTick(0.25);
       });
 
       // ---------- Fish Response System (Direction A) ----------
@@ -461,8 +469,21 @@
         spdVal.textContent = SPEED.toFixed(2) + '×';
         cntVal.textContent = String(targetFishCount);
         if (modeVal) {
-          modeVal.textContent = world.autonomousMode > 0.8 ? 'Autonomous' : (world.autonomousMode > 0.1 ? 'Drifting...' : 'Following');
-          modeVal.style.color = world.autonomousMode > 0.8 ? '#4af' : (world.autonomousMode > 0.1 ? '#fa4' : '#eee');
+          let statusStr = 'Following';
+          let statusColor = '#eee';
+          if (world.followingMegafauna) {
+            const type = world.followingMegafauna.type || 'Marine Life';
+            statusStr = 'Follow: ' + type.charAt(0).toUpperCase() + type.slice(1);
+            statusColor = '#9f7'; // Success green
+          } else if (world.autonomousMode > 0.8) {
+            statusStr = 'Autonomous';
+            statusColor = '#4af';
+          } else if (world.autonomousMode > 0.1) {
+            statusStr = 'Drifting...';
+            statusColor = '#fa4';
+          }
+          modeVal.textContent = statusStr;
+          modeVal.style.color = statusColor;
         }
       }
 
@@ -571,8 +592,14 @@
             cx += f.x;
             cy += f.y;
           }
-          migration.centerX = lerp(migration.centerX, cx / fish.length, 0.02);
-          migration.centerY = lerp(migration.centerY, cy / fish.length, 0.02);
+
+          const targetCX = cx / fish.length;
+          if (!isNaN(targetCX)) migration.centerX = lerp(migration.centerX, targetCX, 0.02);
+
+
+          const targetCY = cy / fish.length;
+          if (!isNaN(targetCY)) migration.centerY = lerp(migration.centerY, targetCY, 0.02);
+
           migration.waveOrigin.x = migration.centerX;
           migration.waveOrigin.y = migration.centerY;
         }
@@ -982,202 +1009,449 @@
       }
 
       // ============================================================
+      // JELLYFISH SYSTEM (Free Drifting, Influenced by School)
+      // ============================================================
+      const jellyfish = [];
+      const JELLY_COUNT = isMobile ? 8 : 15;
+
+      function initJellyfish() {
+        jellyfish.length = 0;
+        for (let i = 0; i < JELLY_COUNT; i++) {
+          jellyfish.push(spawnJelly(true));
+        }
+      }
+
+      function spawnJelly(randomPos = false) {
+        return {
+          x: randomPos ? Math.random() * W : (Math.random() < 0.5 ? -100 : W + 100),
+          y: Math.random() * H,
+          vx: rand(-0.1, 0.1),
+          vy: rand(-0.1, 0.1),
+          size: rand(15, 35),
+          pulsePhase: Math.random() * Math.PI * 2,
+          pulseSpeed: rand(0.001, 0.002),
+          angle: rand(-0.2, 0.2), // Slight tilt from vertical
+          color: `hsla(${rand(0, 360)}, 70%, 75%, ${rand(0.25, 0.45)})`, // Broader color range
+          tentacles: Array.from({ length: 6 }, () => ({
+            phase: Math.random() * Math.PI * 2,
+            len: rand(1.5, 2.5)
+          }))
+        };
+      }
+
+      function updateJellyfish(dt, t) {
+        for (let i = jellyfish.length - 1; i >= 0; i--) {
+          const j = jellyfish[i];
+
+          // Natural pulsing cycle
+          const prevPulse = Math.sin(j.pulsePhase);
+          j.pulsePhase += j.pulseSpeed * dt;
+          const currPulse = Math.sin(j.pulsePhase);
+
+          // Thrust on contraction (sin going from pos to neg)
+          if (prevPulse > 0 && currPulse <= 0) {
+            const thrust = j.size * 0.005;
+            j.vx += Math.sin(j.angle) * thrust;
+            j.vy -= Math.cos(j.angle) * thrust;
+          }
+
+          // DRAG
+          j.vx *= Math.pow(0.98, dt / 16);
+          j.vy *= Math.pow(0.98, dt / 16);
+
+          // FISH SCHOOL INFLUENCE (Turbulence)
+          // Find nearby fish and add their velocity to jelly
+          const cx = Math.floor(j.x / cellSize);
+          const cy = Math.floor(j.y / cellSize);
+          if (grid && cx >= 0 && cx < gridW && cy >= 0 && cy < gridH) {
+            const cell = grid[cy * gridW + cx];
+            let avgVx = 0, avgVy = 0, count = 0;
+            for (let k = 0; k < Math.min(cell.length, 10); k++) {
+              const o = fish[cell[k]];
+              avgVx += o.vx;
+              avgVy += o.vy;
+              count++;
+            }
+            if (count > 0) {
+              const influence = 0.008 * (dt / 16); // Increased influence from 0.002
+              j.vx += (avgVx / count) * influence;
+              j.vy += (avgVy / count) * influence;
+            }
+          }
+
+          // Move
+          j.x += j.vx * dt * 0.1;
+          j.y += j.vy * dt * 0.1;
+
+          // Wrap or Replace
+          if (j.x < -150 || j.x > W + 150 || j.y < -150 || j.y > H + 150) {
+            jellyfish[i] = spawnJelly(false);
+          }
+        }
+      }
+
+      function drawJellyfish(t) {
+        ctx.save();
+        for (const j of jellyfish) {
+          const pulse = 1 + 0.25 * Math.sin(j.pulsePhase);
+          const alpha = 0.3 + 0.1 * Math.sin(j.pulsePhase);
+
+          ctx.save();
+          ctx.translate(j.x, j.y);
+          ctx.rotate(j.angle);
+          ctx.globalAlpha = alpha;
+
+          // Tentacles (Back)
+          ctx.strokeStyle = j.color;
+          ctx.lineWidth = 1.5;
+          ctx.lineCap = 'round';
+          for (let i = 0; i < j.tentacles.length; i++) {
+            const tent = j.tentacles[i];
+            const tx = (i - (j.tentacles.length - 1) * 0.5) * (j.size * 0.3) * pulse;
+            ctx.beginPath();
+            ctx.moveTo(tx, 0);
+            const segments = 6;
+            for (let s = 1; s <= segments; s++) {
+              const sy = s * (j.size * tent.len / segments);
+              const sx = tx + Math.sin(t * 0.002 + tent.phase + s * 0.5) * (s * 2) * pulse;
+              ctx.lineTo(sx, sy);
+            }
+            ctx.stroke();
+          }
+
+          // Main Bell (Dome)
+          const grad = ctx.createRadialGradient(0, -j.size * 0.2, 0, 0, -j.size * 0.2, j.size);
+          grad.addColorStop(0, j.color.replace(/[^,]+(?=\))/, '0.6'));
+          grad.addColorStop(1, j.color.replace(/[^,]+(?=\))/, '0.1'));
+          ctx.fillStyle = grad;
+
+          ctx.beginPath();
+          ctx.moveTo(-j.size * pulse, 0);
+          ctx.bezierCurveTo(-j.size * pulse, -j.size * 1.3 * pulse, j.size * pulse, -j.size * 1.3 * pulse, j.size * pulse, 0);
+          ctx.quadraticCurveTo(0, j.size * 0.2, -j.size * pulse, 0);
+          ctx.fill();
+
+          // Bell highlight
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(0, -j.size * 0.3, j.size * 0.8 * pulse, -Math.PI * 0.8, -Math.PI * 0.2);
+          ctx.stroke();
+
+          ctx.restore();
+        }
+        ctx.restore();
+      }
+
+
+      // ============================================================
+      // CRAB SYSTEM (Bottom Dwellers)
+      // ============================================================
+
+
+
+      // ============================================================
       // PREDATOR SYSTEM (Direction E: Predator Chase)
       // Giant shark shadow → fish panic scatter →
       // cursor light wave drives it away → fish regroup
       // ============================================================
       const predator = {
         active: false,
-        timer: rand(35000, 55000), // first shark 35-55 s after start
+        timer: 5000, // Wait 5s by default
         shark: null,
         lightWaves: [],
         victoryFlash: 0
       };
 
       function spawnPredator() {
-        const side = randInt(0, 3); // 0=left 1=right 2=top 3=bottom
+        const side = randInt(0, 3);
         let sx, sy, entryDx, entryDy;
-        if (side === 0) { sx = -150; sy = rand(H * 0.22, H * 0.78); entryDx = 1; entryDy = 0; }
-        else if (side === 1) { sx = W + 150; sy = rand(H * 0.22, H * 0.78); entryDx = -1; entryDy = 0; }
-        else if (side === 2) { sx = rand(W * 0.22, W * 0.78); sy = -110; entryDx = 0; entryDy = 1; }
-        else { sx = rand(W * 0.22, W * 0.78); sy = H + 110; entryDx = 0; entryDy = -1; }
+        if (side === 0) { sx = 50; sy = rand(H * 0.2, H * 0.8); entryDx = 1; entryDy = 0; }
+        else if (side === 1) { sx = W - 50; sy = rand(H * 0.2, H * 0.8); entryDx = -1; entryDy = 0; }
+        else if (side === 2) { sx = rand(W * 0.2, W * 0.8); sy = 50; entryDx = 0; entryDy = 1; }
+        else { sx = rand(W * 0.2, W * 0.8); sy = H - 50; entryDx = 0; entryDy = -1; }
 
-        const penetration = rand(220, 400);
+
+
         predator.shark = {
           x: sx, y: sy,
           entryDx, entryDy,
-          targetX: sx + entryDx * penetration,
-          targetY: sy + entryDy * penetration,
+          targetX: sx + entryDx * 800,
+          targetY: sy + entryDy * 800,
           life: 0,
-          maxLife: 8000,       // auto-leave after 8 s
-          fleeMeter: 0,        // 0→1; filled by light wave; triggers flee at 1
+          maxLife: 25000,
+          fleeMeter: 0,
           fleeing: false,
-          fleeProgress: 0,     // 0→1 exit animation
+          fleeProgress: 0,
           phase: rand(0, Math.PI * 2),
-          entryProgress: 0     // 0→1 ramp-in over 1.4 s
+          entryProgress: 1.0, // FORCE INSTANT VISIBILITY
+          heading: Math.atan2(entryDy, entryDx),
+          targetOffsetX: 0,
+          targetOffsetY: 0,
+          wanderPhase: rand(0, 1000)
         };
         predator.active = true;
-        events.flashTimer = 520; // edge flash to signal threat
+        events.flashTimer = 600;
         if (soundOn && audio) audio.predatorApproach();
       }
 
-      function updatePredator(dt) {
-        if (predator.victoryFlash > 0) predator.victoryFlash -= dt;
 
+
+
+      function updatePredatorSystem(dt) {
         if (!predator.active) {
-          if (events.active && events.active.length > 0) return; // gate: no spawn during big events
-          predator.timer -= dt;
-          if (predator.timer <= 0) { spawnPredator(); predator.timer = rand(35000, 55000); }
-          return;
+          // Only spawn if mouse has been idle for at least 5 seconds
+          if (pointer.idle > 5000) {
+            predator.timer -= dt;
+            if (predator.timer <= 0) {
+              spawnPredator();
+              predator.timer = rand(15000, 30000);
+            }
+          } else {
+            // If mouse moves, reset the shark spawn timer
+            predator.timer = 5000;
+          }
+        }
+      }
+
+      function updatePredator(dt) {
+        if (predator.shark && (isNaN(predator.shark.x) || isNaN(predator.shark.y))) { predator.active = false; predator.shark = null; return; }
+        if (!predator.active || !predator.shark) return;
+        const s = predator.shark;
+
+        if (typeof s.heading === 'undefined' || isNaN(s.heading)) {
+          s.heading = Math.atan2(s.entryDy, s.entryDx) || 0;
+          // console.log("Fixed undefined heading");
         }
 
-        const s = predator.shark;
+        if (!window.sharkLogThrottle) window.sharkLogThrottle = 0;
+        window.sharkLogThrottle++;
+
+
         s.life += dt;
-        s.phase += dt * 0.005;
-        if (s.entryProgress < 1) s.entryProgress = Math.min(1, s.entryProgress + dt / 1400);
+        if (s.entryProgress < 1) s.entryProgress = Math.min(1, s.entryProgress + dt / 1000);
 
         if (!s.fleeing) {
-          // Slow prowl toward target
-          const ddx = s.targetX - s.x, ddy = s.targetY - s.y;
-          const dd = Math.hypot(ddx, ddy);
-          if (dd > 4) {
-            const spd = 0.22 * s.entryProgress;
-            s.x += (ddx / dd) * spd * dt * 0.06;
-            s.y += (ddy / dd) * spd * dt * 0.06;
+          // Predator targeting: always school center
+
+          // SAFETY CHECK: Handle NaN migration center
+          let mx = migration.centerX;
+          let my = migration.centerY;
+          if (isNaN(mx) || isNaN(my)) {
+            mx = W * 0.5;
+            my = H * 0.5;
           }
-          // Light-wave: cursor near shark → rings + flee meter
-          const curDist = Math.hypot(pointer.x - s.x, pointer.y - s.y);
-          const waveRange = 250;
-          if (curDist < waveRange && s.entryProgress > 0.45) {
-            if (Math.random() < dt * 0.0038)
-              predator.lightWaves.push({ x: pointer.x, y: pointer.y, r: 0, life: 0, maxLife: 680 });
-            const prox = 1 - curDist / waveRange;
-            s.fleeMeter += prox * prox * dt * 0.00042;
-          }
-          // Trigger flee
-          if (s.fleeMeter >= 1 || s.life >= s.maxLife) {
-            s.fleeing = true; s.fleeProgress = 0;
-            if (s.fleeMeter >= 1) {
-              predator.victoryFlash = 720;
-              if (soundOn && audio) audio.predatorVictory();
+
+          // Add random wandering around the school center
+          s.wanderPhase += dt * 0.0005;
+          s.targetOffsetX = Math.sin(s.wanderPhase) * 400 + Math.sin(s.wanderPhase * 1.7) * 150;
+          s.targetOffsetY = Math.cos(s.wanderPhase * 0.8) * 300 + Math.cos(s.wanderPhase * 1.3) * 100;
+
+          const dx = (mx + s.targetOffsetX) - s.x;
+          const dy = (my + s.targetOffsetY) - s.y;
+
+          const dist = Math.hypot(dx, dy) || 1;
+
+          if (!s.state) s.state = "CHASING";
+          if (!s.stateTimer) s.stateTimer = 3000;
+          s.stateTimer -= dt;
+
+          let moveSpd = 4.0;
+
+          if (s.state === "CHASING") {
+            moveSpd = 2.4 + (dist < 800 ? (1.0 - dist / 800) * 2.0 : 0);
+            if (dist < 300 && s.stateTimer < 0) {
+              s.state = "LUNGING";
+              s.stateTimer = 1500;
+            }
+          } else if (s.state === "LUNGING") {
+            moveSpd = 7.5; // AGGRESSIVE BUT CONTROLLED
+            if (s.stateTimer <= 0) {
+              s.state = "CHASING";
+              s.stateTimer = 3000 + Math.random() * 3000;
             }
           }
+
+          // Heading update - snappy to track fast fish
+          const targetH = Math.atan2(dy, dx);
+          let adiff = targetH - s.heading;
+          while (adiff > Math.PI) adiff -= Math.PI * 2;
+          while (adiff < -Math.PI) adiff += Math.PI * 2;
+          s.heading += adiff * 0.04;
+
+          s.vx = Math.cos(s.heading) * moveSpd;
+          s.vy = Math.sin(s.heading) * moveSpd;
+
+          // Movement update
+          s.x += s.vx * dt * 0.15;
+          s.y += s.vy * dt * 0.15;
+          s.phase += dt * (0.01 + moveSpd * 0.008);
+
+          // Interaction (flee meter logic)
+          const curDist = Math.hypot(pointer.x - s.x, pointer.y - s.y);
+          if (curDist < 260 && s.entryProgress > 0.45 && pointer.idle < 3000) {
+            if (Math.random() < dt * 0.0038)
+              predator.lightWaves.push({ x: pointer.x, y: pointer.y, r: 0, life: 0, maxLife: 680 });
+            s.fleeMeter += (1 - curDist / 260) ** 2 * dt * 0.00015;
+          }
+          if (s.fleeMeter >= 1 || s.life >= s.maxLife) {
+            s.fleeing = true; s.fleeProgress = 0;
+            s.exitDx = s.x < W * 0.5 ? -1 : 1;
+            s.exitDy = (Math.random() - 0.5) * 0.6;
+            if (s.fleeMeter >= 1) predator.victoryFlash = 720;
+          }
+
+          // Screen wrap protection
+          if (s.x < -800) s.x = W + 800; else if (s.x > W + 800) s.x = -800;
+          if (s.y < -800) s.y = H + 800; else if (s.y > H + 800) s.y = -800;
         } else {
-          // Flee: accelerate back toward the edge
-          s.fleeProgress = Math.min(1, s.fleeProgress + dt / 820);
-          const acc = s.fleeProgress * s.fleeProgress;
-          s.x -= s.entryDx * acc * 0.42 * dt * 0.06;
-          s.y -= s.entryDy * acc * 0.42 * dt * 0.06;
-          if (s.fleeProgress >= 1) { predator.active = false; predator.shark = null; }
+          // Fleeing logic
+          s.fleeProgress = Math.min(1, s.fleeProgress + dt / 1200);
+          const spd = (1.5 + s.fleeProgress * 2.0) * s.entryProgress;
+          const targetHeading = Math.atan2(s.exitDy || 0, s.exitDx || -1);
+          let angleDiff = targetHeading - s.heading;
+          while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+          while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+          s.heading += angleDiff * 0.08;
+          s.x += Math.cos(s.heading) * spd * dt * 0.1;
+          s.y += Math.sin(s.heading) * spd * dt * 0.1;
+          if (s.x < -600 || s.x > W + 600 || s.y < -600 || s.y > H + 600) {
+            predator.active = false; predator.shark = null;
+          }
         }
 
         // Light-wave ring lifecycle
         for (let i = predator.lightWaves.length - 1; i >= 0; i--) {
           const w = predator.lightWaves[i];
-          w.life += dt;
-          w.r = (w.life / w.maxLife) * 170;
+          w.life += dt; w.r = (w.life / w.maxLife) * 170;
           if (w.life >= w.maxLife) predator.lightWaves.splice(i, 1);
         }
       }
 
-      // Repulsion force on a single fish when predator is active
       function getPredatorForce(f) {
         if (!predator.active || !predator.shark) return { fx: 0, fy: 0 };
         const s = predator.shark;
-        let fadeScale = 1;
-        if (s.fleeing) {
-          fadeScale = Math.max(0, 1 - s.fleeProgress * 2.6);
-          if (fadeScale <= 0) return { fx: 0, fy: 0 };
-        }
+
+
         const dx = f.x - s.x, dy = f.y - s.y;
         const dist = Math.hypot(dx, dy) || 1;
-        const screenDiag = Math.max(W, H) * 0.78;
-        // Long-range: gentle whole-school push
-        const longFalloff = Math.max(0, 1 - dist / screenDiag);
-        // Short-range: strong panic burst (quadratic)
-        const shortRange = 400;
-        const shortStr = dist < shortRange ? Math.pow(1 - dist / shortRange, 2) * 6.2 : 0;
-        const strength = (longFalloff * 1.7 + shortStr) * fadeScale;
-        // Per-fish chaotic noise
-        const nx = ((f.hueSeed * 7.13 + f.size) % 1 - 0.5) * 1.5;
-        const ny = ((f.hueSeed * 4.67 + f.phase * 0.0002) % 1 - 0.5) * 1.5;
-        return {
-          fx: (dx / dist) * strength + nx * fadeScale,
-          fy: (dy / dist) * strength + ny * fadeScale
-        };
-      }
 
+        // PANIC RESPONSE: Extremely high speed and tight concentration
+        const isLunge = s.state === "LUNGING";
+        const repStr = isLunge ? 150.0 : 80.0; // Significant boost for "High Speed" feel
+        const range = isLunge ? 550 : 420;    // Wider range of influence
+
+        let fx = 0, fy = 0;
+        if (dist < range) {
+          const ratio = (1 - dist / range) ** 2;
+          fx = (dx / dist) * ratio * repStr;
+          fy = (dy / dist) * ratio * repStr;
+
+          // Swirl and focus induction (Tighter school concentration)
+          const cdx = migration.centerX - f.x, cdy = migration.centerY - f.y;
+          const cd = Math.hypot(cdx, cdy) || 1;
+          const swirlStr = (isLunge ? 35.0 : 20.0) * (1 - dist / range);
+          const concentrateStr = 15.0 * (1 - dist / range);
+          fx += (-cdy / cd) * swirlStr + (cdx / cd) * concentrateStr;
+          fy += (cdx / cd) * swirlStr + (cdy / cd) * concentrateStr;
+        }
+        return { fx, fy };
+      }
       function drawPredator() {
         if (!predator.active || !predator.shark) return;
         const s = predator.shark;
+
         const entryA = Math.min(1, s.entryProgress);
         const fleeA = s.fleeing ? Math.max(0, 1 - s.fleeProgress * 1.9) : 1;
         const alpha = entryA * fleeA;
-        if (alpha < 0.004) return;
+        // if (alpha < 0.004) return; // FORCED VISIBLE
+
+
+
 
         ctx.save();
         ctx.translate(s.x, s.y);
-        const faceAngle = s.fleeing
-          ? Math.atan2(-s.entryDy, -s.entryDx)
-          : Math.atan2(s.entryDy, s.entryDx);
-        ctx.rotate(faceAngle + Math.sin(s.phase) * 0.07);
+        // Synchronize rotation with AI heading, adding a subtle swim wobble
+        ctx.rotate((s.heading || Math.atan2(s.entryDy, s.entryDx)) + Math.sin(s.phase) * 0.08);
 
-        const sz = 158;
-        const bw = Math.sin(s.phase * 1.9) * 0.035;
+        const sz = 77; // Reduced size by 30% from 110
+        const bw = Math.sin(s.phase * 1.8) * 0.04;
 
-        // Threat glow (screen blend, dark red undertone)
+        // 1. Threat Glow (Deep Blue Predator Aura)
         ctx.globalCompositeOperation = 'screen';
-        const pulse = 0.84 + 0.16 * Math.sin(s.phase * 2.3);
-        const gg = ctx.createRadialGradient(0, 0, 28, 0, 0, 310 * pulse);
-        gg.addColorStop(0, `rgba(65, 28, 42, ${alpha * 0.24})`);
-        gg.addColorStop(0.42, `rgba(38, 18, 34, ${alpha * 0.11})`);
-        gg.addColorStop(1, `rgba(14,  9, 22, 0)`);
+        const pulse = 0.85 + 0.15 * Math.sin(s.phase * 2.2);
+        const gg = ctx.createRadialGradient(0, 0, 10, 0, 0, 220 * pulse);
+        gg.addColorStop(0, `rgba(40, 80, 120, ${alpha * 0.25})`);
+        gg.addColorStop(1, 'transparent');
         ctx.fillStyle = gg;
-        ctx.beginPath(); ctx.arc(0, 0, 310 * pulse, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(0, 0, 220 * pulse, 0, Math.PI * 2); ctx.fill();
         ctx.globalCompositeOperation = 'source-over';
 
-        // Shark silhouette
-        ctx.globalAlpha = alpha * 0.40;
-        ctx.fillStyle = 'rgba(10, 14, 24, 1)';
+        // 2. Body Drawing (High Detail Two-Tone)
+        ctx.globalAlpha = alpha;
 
-        // Body — sleek torpedo
-        ctx.beginPath();
-        ctx.moveTo(sz * 1.06, 0);
-        ctx.quadraticCurveTo(sz * 0.78, -sz * 0.17, sz * 0.36, -sz * 0.30 + bw * sz);
-        ctx.quadraticCurveTo(sz * 0.02, -sz * 0.29 + bw * sz * 0.65, -sz * 0.42, -sz * 0.20);
-        ctx.quadraticCurveTo(-sz * 0.70, -sz * 0.09, -sz * 0.82, 0);
-        ctx.quadraticCurveTo(-sz * 0.70, sz * 0.09, -sz * 0.42, sz * 0.20);
-        ctx.quadraticCurveTo(sz * 0.02, sz * 0.29 + bw * sz * 0.65, sz * 0.36, sz * 0.30 + bw * sz);
-        ctx.quadraticCurveTo(sz * 0.78, sz * 0.17, sz * 1.06, 0);
-        ctx.closePath();
-        ctx.fill();
+        // Render layers for dark back and light belly
+        const renderLayer = (isBelly) => {
+          ctx.beginPath();
+          if (isBelly) {
+            ctx.fillStyle = '#f0f5ff'; // Pale underbelly
+            ctx.moveTo(sz * 1.0, 0);
+            ctx.quadraticCurveTo(sz * 0.4, sz * 0.35 + bw * sz, -sz * 0.8, 0);
+            ctx.lineTo(sz * 1.0, 0);
+          } else {
+            ctx.fillStyle = '#1a2a3a'; // Dark predator grey
+            ctx.moveTo(sz * 1.0, 0);
+            ctx.quadraticCurveTo(sz * 0.4, -sz * 0.38 + bw * sz, -sz * 0.8, 0);
+            ctx.lineTo(sz * 1.0, 0);
+          }
+          ctx.fill();
+        };
+
+        renderLayer(false); // Back
+        renderLayer(true);  // Belly
+
+        // Gills (3 distinct dark slits)
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+        ctx.lineWidth = 1.6;
+        for (let i = 0; i < 3; i++) {
+          const gx = sz * 0.55 - i * 6;
+          ctx.beginPath();
+          ctx.moveTo(gx, -sz * 0.08);
+          ctx.lineTo(gx - 2, sz * 0.12);
+          ctx.stroke();
+        }
+
+        // Eye (Detailed orb with reflection)
+        ctx.fillStyle = '#000';
+        ctx.beginPath(); ctx.arc(sz * 0.82, -sz * 0.06, 2.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(sz * 0.83, -sz * 0.07, 0.8, 0, Math.PI * 2); ctx.fill();
+
+        // 3. Hydrodynamic Fins
+        ctx.fillStyle = '#1a2a3a';
 
         // Dorsal fin
         ctx.beginPath();
-        ctx.moveTo(sz * 0.13, -sz * 0.27 + bw * sz * 0.5);
-        ctx.lineTo(sz * -0.03, -sz * 0.60);
-        ctx.lineTo(-sz * 0.22, -sz * 0.24);
-        ctx.closePath();
+        ctx.moveTo(sz * 0.2, -sz * 0.25);
+        ctx.quadraticCurveTo(sz * 0.0, -sz * 0.7, -sz * 0.3, -sz * 0.25);
         ctx.fill();
-
-        // Tail fins (forked)
-        ctx.beginPath();
-        ctx.moveTo(-sz * 0.78, -sz * 0.05);
-        ctx.quadraticCurveTo(-sz * 0.90, -sz * 0.17, -sz * 1.10, -sz * 0.32 + bw * sz * 0.9);
-        ctx.lineTo(-sz * 0.86, 0);
-        ctx.closePath(); ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(-sz * 0.78, sz * 0.05);
-        ctx.quadraticCurveTo(-sz * 0.90, sz * 0.17, -sz * 1.10, sz * 0.32 + bw * sz * 0.9);
-        ctx.lineTo(-sz * 0.86, 0);
-        ctx.closePath(); ctx.fill();
 
         // Pectoral fin
         ctx.beginPath();
-        ctx.moveTo(sz * 0.30, sz * 0.21);
-        ctx.lineTo(sz * 0.02, sz * 0.48);
-        ctx.lineTo(-sz * 0.16, sz * 0.23);
-        ctx.closePath(); ctx.fill();
+        ctx.moveTo(sz * 0.45, sz * 0.15);
+        ctx.lineTo(sz * 0.1, sz * 0.55);
+        ctx.lineTo(-sz * 0.1, sz * 0.2);
+        ctx.fill();
+
+        // Tail (Powerful forked caudal fin)
+        const tWave = Math.sin(s.phase * 2.0) * 12;
+        ctx.beginPath();
+        ctx.moveTo(-sz * 0.75, 0);
+        ctx.lineTo(-sz * 1.15, -sz * 0.45 + tWave);
+        ctx.lineTo(-sz * 0.9, 0);
+        ctx.lineTo(-sz * 1.15, sz * 0.45 + tWave);
+        ctx.closePath();
+        ctx.fill();
 
         ctx.restore();
       }
@@ -1205,6 +1479,8 @@
           ctx.restore();
         }
       }
+
+
 
       // ============================================================
       // EVENT DIRECTOR SYSTEM
@@ -1809,14 +2085,14 @@
         } else if (chosen === 1) { // fishFry — swarm dashes across screen
           const side = Math.random() < 0.5 ? -1 : 1;
           fishFryGroups.push({
-            x: side < 0 ? -55 : W + 55,
+            x: side < 0 ? -80 : W + 80,
             y: rand(H * 0.15, H * 0.85),
             direction: -side,
-            speed: rand(1.9, 3.1),
-            count: randInt(5, 12),
+            speed: rand(2.2, 3.5),
+            count: randInt(6, 14),
             phase: rand(0, Math.PI * 2),
             life: 0,
-            maxLife: rand(2600, 4400)
+            maxLife: rand(3000, 5000)
           });
         } else if (chosen === 2) { // starDrop — collectible star appears
           collectibles.push({
@@ -1856,7 +2132,12 @@
 
       function updateMicroSurprises(dt, t) {
         microSurprises.timer -= dt;
-        if (microSurprises.timer <= 0) { spawnMicroSurprise(t); microSurprises.timer = rand(5000, 8000); }
+        // Always ensure at least one collectible if none exist
+        if (collectibles.length === 0) {
+          spawnMicroSurprise(t);
+          microSurprises.timer = rand(3000, 6000); // Shorter cooldown
+        }
+        if (microSurprises.timer <= 0) { spawnMicroSurprise(t); microSurprises.timer = rand(3000, 6000); }
 
         // Update fish fry groups
         for (let i = fishFryGroups.length - 1; i >= 0; i--) {
@@ -2051,20 +2332,19 @@
         comp.release.setValueAtTime(0.25, ac.currentTime);
 
         const outGain = ac.createGain();
-        outGain.gain.value = 2.0; // Global loudness boost
+        outGain.gain.value = 2.0;
 
         master.connect(lp);
         lp.connect(comp);
         comp.connect(outGain);
         outGain.connect(ac.destination);
 
-
-        // --- PINK NOISE GENERATOR (For Ocean Ambiance) ---
-        // Generates pink noise via an AudioWorklet or a Buffer:
-        // Here we use a 2-second pre-filled buffer for efficiency
+        // --- NOISE GENERATORS ---
         const bufferSize = 2 * ac.sampleRate;
+
+        // 粉红噪声 (用于 A2 动态效果)
         const pinkBuffer = ac.createBuffer(1, bufferSize, ac.sampleRate);
-        const output = pinkBuffer.getChannelData(0);
+        const pData = pinkBuffer.getChannelData(0);
         let b0, b1, b2, b3, b4, b5, b6;
         b0 = b1 = b2 = b3 = b4 = b5 = b6 = 0.0;
         for (let i = 0; i < bufferSize; i++) {
@@ -2075,127 +2355,140 @@
           b3 = 0.86650 * b3 + white * 0.3104856;
           b4 = 0.55000 * b4 + white * 0.5329522;
           b5 = -0.7616 * b5 - white * 0.0168980;
-          output[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
-          output[i] *= 0.11; // normalization
+          pData[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+          pData[i] *= 0.11;
           b6 = white * 0.115926;
         }
 
-        const ambientSource = ac.createBufferSource();
-        ambientSource.buffer = pinkBuffer;
-        ambientSource.loop = true;
-        const ambientGain = ac.createGain();
-        ambientGain.gain.value = 0.15; // Increased base ocean hum
-        ambientSource.connect(ambientGain);
-        ambientGain.connect(master);
-        ambientSource.start();
+        // 棕色噪声 (用于 A3 环境底音)
+        const brownBuffer = ac.createBuffer(1, bufferSize, ac.sampleRate);
+        const brData = brownBuffer.getChannelData(0);
+        let lastOut = 0.0;
+        for (let i = 0; i < bufferSize; i++) {
+          const white = Math.random() * 2 - 1;
+          const out = (lastOut + (0.02 * white)) / 1.02;
+          brData[i] = out * 3.5;
+          lastOut = out;
+        }
+
+        // --- AMBIENT A3 (Reduced Volume) ---
+        const envSource = ac.createBufferSource();
+        envSource.buffer = brownBuffer;
+        envSource.loop = true;
+        const envFilter = ac.createBiquadFilter();
+        envFilter.type = 'lowpass';
+        envFilter.frequency.value = 150; // 深邃低沉
+        const envGain = ac.createGain();
+        envGain.gain.value = 0.002; // Near-silent background hum
+        envSource.connect(envFilter);
+        envFilter.connect(envGain);
+        envGain.connect(master);
+        envSource.start();
+
+        // --- MOVEMENT A2 (Dynamic School Effect) ---
+        const moveSource = ac.createBufferSource();
+        moveSource.buffer = pinkBuffer;
+        moveSource.loop = true;
+        const moveFilter = ac.createBiquadFilter();
+        moveFilter.type = 'bandpass';
+        moveFilter.frequency.value = 600;
+        moveFilter.Q.value = 0.5;
+        const moveGain = ac.createGain();
+        moveGain.gain.value = 0.0;
+        moveSource.connect(moveFilter);
+        moveFilter.connect(moveGain);
+        moveGain.connect(master);
+        moveSource.start();
 
         // --- SUB BASS THRUM ---
         const sub = ac.createOscillator();
         sub.type = 'sine';
-        sub.frequency.value = 32; // Lower, more visceral
+        sub.frequency.value = 32;
         const subG = ac.createGain();
-        subG.gain.value = 0.025; // Boosted
+        subG.gain.value = 0.02;
         sub.connect(subG);
         subG.connect(master);
         sub.start();
 
+        // --- DELAY FOR REVERB (A3 Style) ---
+        const bubbleDelay = ac.createDelay(0.1);
+        bubbleDelay.delayTime.value = 0.035;
+        const bubbleFeedback = ac.createGain();
+        bubbleFeedback.gain.value = 0.3;
+        bubbleDelay.connect(bubbleFeedback);
+        bubbleFeedback.connect(bubbleDelay);
+        bubbleDelay.connect(master);
 
-        // --- MINNAERT BUBBLE SYNTH ---
+        // --- FUNCTIONS ---
         function bubbleTick(str = 0.35) {
           const t = ac.currentTime;
           const o = ac.createOscillator();
           o.type = 'sine';
-          const freq = 500 + (1 - str) * 3200 + Math.random() * 300;
+          const freq = 600 + (1 - str) * 2500 + Math.random() * 300;
           o.frequency.setValueAtTime(freq, t);
-          o.frequency.exponentialRampToValueAtTime(freq * 0.75, t + 0.12);
+          o.frequency.exponentialRampToValueAtTime(freq * 0.7, t + 0.15);
 
           const g = ac.createGain();
           g.gain.setValueAtTime(0.0001, t);
-          const peak = 0.03 * clamp01(str); // Boosted peak
-          g.gain.exponentialRampToValueAtTime(peak, t + 0.005);
-          g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+          g.gain.exponentialRampToValueAtTime(0.03 * str, t + 0.005);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
 
           o.connect(g);
           g.connect(master);
+          g.connect(bubbleDelay);
           o.start(t);
-          o.stop(t + 0.5);
+          o.stop(t + 0.4);
         }
 
-
-        // --- SPLASH SYNTH (White Noise transient) ---
         function splashTick(str = 0.5) {
           const t = ac.currentTime;
-          const bufferSize = ac.sampleRate * 0.5; // 0.5s splash
-          const buffer = ac.createBuffer(1, bufferSize, ac.sampleRate);
-          const data = buffer.getChannelData(0);
-          for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+          const body = ac.createOscillator();
+          body.frequency.setValueAtTime(140, t);
+          body.frequency.exponentialRampToValueAtTime(35, t + 0.25);
+          const bg = ac.createGain();
+          bg.gain.setValueAtTime(0.5 * str, t);
+          bg.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+          body.connect(bg); bg.connect(master);
+          body.start(); body.stop(t + 0.4);
 
-          const source = ac.createBufferSource();
-          source.buffer = buffer;
-
-          const filter = ac.createBiquadFilter();
-          filter.type = 'bandpass';
-          filter.frequency.setValueAtTime(1500, t);
-          filter.frequency.exponentialRampToValueAtTime(800, t + 0.3);
-          filter.Q.value = 2;
-
-          const g = ac.createGain();
-          const peak = 0.02 * str;
-          g.gain.setValueAtTime(0.0001, t);
-          g.gain.exponentialRampToValueAtTime(peak, t + 0.01);
-          g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
-
-          source.connect(filter);
-          filter.connect(g);
-          g.connect(master);
-          source.start(t);
-          source.stop(t + 0.5);
+          const swSrc = ac.createBufferSource();
+          swSrc.buffer = pinkBuffer;
+          const swf = ac.createBiquadFilter();
+          swf.type = 'bandpass';
+          swf.frequency.setValueAtTime(900, t);
+          swf.frequency.exponentialRampToValueAtTime(180, t + 0.3);
+          const swg = ac.createGain();
+          swg.gain.setValueAtTime(0.4 * str, t);
+          swg.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+          swSrc.connect(swf); swf.connect(swg); swg.connect(master);
+          swSrc.start(); swSrc.stop(t + 0.5);
         }
 
-        // --- AMBIENT MODULATION (Ocean Churn) ---
         function setAmbiance(speed, density, turning) {
           const t = ac.currentTime;
-          // More movement = louder pink noise and higher filter cutoff
-          const activity = speed * 0.7 + density * 0.3 + turning * 1.5;
-          const targetHum = 0.08 + activity * 0.25;
-          ambientGain.gain.setTargetAtTime(clamp(targetHum, 0.08, 0.45), t, 0.3);
+          const activity = speed * 0.5 + density * 0.2 + turning * 1.0;
+          const targetMoveGain = clamp(activity * 0.33, 0, 0.45); // Reduced by 40% per user request
+          moveGain.gain.setTargetAtTime(targetMoveGain, t, 0.5);
 
-          const targetFreq = 1400 + activity * 2200;
-          lp.frequency.setTargetAtTime(clamp(targetFreq, 1000, 5000), t, 0.5);
+          const targetFreq = 1200 + activity * 1800;
+          lp.frequency.setTargetAtTime(clamp(targetFreq, 800, 4000), t, 0.8);
         }
 
-        // --- SWISH EFFECT (Coupled to fish movement) ---
         function swish(str = 0.5) {
-          if (!soundOn) return;
           const t = ac.currentTime;
-          const o = ac.createOscillator();
-          o.type = 'sine'; // Use sine filtered noise for a "whoosh"
-          o.frequency.setTargetAtTime(100 + Math.random() * 200, t, 0.1);
-
-          const g = ac.createGain();
-          const peak = 0.012 * str;
-          g.gain.setValueAtTime(0.0001, t);
-          g.gain.exponentialRampToValueAtTime(peak, t + 0.05);
-          g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
-
-          const filteredNoise = ac.createBiquadFilter();
-          filteredNoise.type = 'bandpass';
-          filteredNoise.frequency.value = 600 + Math.random() * 800;
-          filteredNoise.Q.value = 1.5;
-
-          // Reuse a bit of pink noise for the swish texture
-          const swishSource = ac.createBufferSource();
-          swishSource.buffer = pinkBuffer;
-
-          swishSource.connect(filteredNoise);
-          filteredNoise.connect(g);
-          g.connect(master);
-          swishSource.start(t);
-          swishSource.stop(t + 0.3);
+          const sNode = ac.createBufferSource();
+          sNode.buffer = pinkBuffer;
+          const sf = ac.createBiquadFilter();
+          sf.type = 'bandpass';
+          sf.frequency.value = 500 + Math.random() * 500;
+          const sg = ac.createGain();
+          sg.gain.setValueAtTime(0.0001, t);
+          sg.gain.exponentialRampToValueAtTime(0.015 * str, t + 0.05);
+          sg.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+          sNode.connect(sf); sf.connect(sg); sg.connect(master);
+          sNode.start(); sNode.stop(t + 0.4);
         }
 
-
-        // Event sound - low rumble
         function eventRumble(intensity = 0.5) {
           const t = ac.currentTime;
           const o = ac.createOscillator();
@@ -2213,7 +2506,6 @@
           o.stop(t + 2);
         }
 
-        // Predator approach: low ominous bass + rumble texture
         function predatorApproach() {
           const t = ac.currentTime;
           const o1 = ac.createOscillator(); o1.type = 'sine'; o1.frequency.value = 28;
@@ -2223,16 +2515,8 @@
           g1.gain.exponentialRampToValueAtTime(0.018, t + 0.6);
           g1.gain.exponentialRampToValueAtTime(0.0001, t + 2.2);
           o1.start(t); o1.stop(t + 2.5);
-          const o2 = ac.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = 42;
-          const g2 = ac.createGain(); g2.gain.value = 0.0001;
-          o2.connect(g2); g2.connect(master);
-          g2.gain.setValueAtTime(0.0001, t);
-          g2.gain.exponentialRampToValueAtTime(0.006, t + 0.4);
-          g2.gain.exponentialRampToValueAtTime(0.0001, t + 1.8);
-          o2.start(t); o2.stop(t + 2.0);
         }
 
-        // Predator victory: bright ascending arpeggio (C-E-G)
         function predatorVictory() {
           const t = ac.currentTime;
           const notes = [440, 554, 659];
@@ -2270,7 +2554,6 @@
           predatorApproach,
           predatorVictory
         };
-
       }
 
 
@@ -2321,45 +2604,52 @@
           { baseHue: 195, satRange: [4, 14], name: 'pale-silver' },
         ];
 
-        // Colorful fish types (5% of population)
+        // Colorful fish types (increased ratio)
         const colorfulTypes = [
-          { baseHue: 35, satRange: [40, 65], name: 'golden' },
-          { baseHue: 15, satRange: [45, 70], name: 'orange' },
-          { baseHue: 355, satRange: [40, 60], name: 'red' },
-          { baseHue: 50, satRange: [50, 75], name: 'yellow' },
-          { baseHue: 280, satRange: [35, 55], name: 'purple' },
-          { baseHue: 165, satRange: [40, 60], name: 'teal' },
+          { baseHue: 35, satRange: [50, 80], name: 'golden' },
+          { baseHue: 15, satRange: [60, 85], name: 'orange' },
+          { baseHue: 355, satRange: [55, 75], name: 'red' },
+          { baseHue: 50, satRange: [65, 88], name: 'yellow' },
+          { baseHue: 280, satRange: [45, 75], name: 'purple' },
+          { baseHue: 165, satRange: [50, 85], name: 'teal' },
+          { baseHue: 310, satRange: [55, 80], name: 'magenta' },
+        ];
+
+        // Strange/Exotic deep-sea types - Refined Collection
+        const strangeTypes = [
+          { baseHue: 180, satRange: [80, 95], name: 'ghost-eel', elongated: 1.3, biolum: true },
+          { baseHue: 10, satRange: [70, 90], name: 'void-needle', elongated: 1.4, biolum: true, weight: 3 },
+          { baseHue: 260, satRange: [60, 85], name: 'abyssal-ray', wider: 1.5, biolum: true },
+          { baseHue: 200, satRange: [90, 100], name: 'angler-fiend', wider: 1.4, headBulb: true, biolum: true, hasLure: true },
+          { baseHue: 340, satRange: [70, 90], name: 'crimson-fang', elongated: 1.2, biolum: true, bigEye: true },
+          { baseHue: 190, satRange: [20, 40], name: 'titan-oar', elongated: 2.2, scaleShimmer: 1.8, weight: 3 },
+          { baseHue: 210, satRange: [60, 80], name: 'prism-hatchet', wider: 1.1, deepBelly: true, biolum: true }
         ];
 
         for (let i = 0; i < n; i++) {
           const roll = Math.random();
 
-          // 5% colorful fish
-          const isColorful = roll < 0.05;
-          // 5% larger fish (1.5x size)
-          const isLarge = roll >= 0.05 && roll < 0.10;
+          // Adjusted ratios: Colorful reduced from 0.35 to 0.21
+          const isStrange = false; // DISABLED UNNATURAL FISH
+          const isColorful = !isStrange && roll < 0.21;
+          const isLarge = !isStrange && !isColorful && roll < 0.45;
 
-          // Size: normal 3.5-5.5, large 5.25-8.25 (1.5x)
-          let size;
-          if (isLarge) {
-            size = rand(5.25, 8.25);
-          } else {
-            size = rand(3.5, 5.5);
-          }
+          // Size: normal 3.5-5.5, large 5.25-8.25
+          let size = isLarge ? rand(5.25, 8.25) : rand(3.5, 5.5);
+          if (isStrange) size *= 1.25;
 
           // Pick color type
           let colorType;
-          if (isColorful) {
+          let strangeProps = null;
+          if (isStrange) {
+            colorType = strangeTypes[Math.floor(Math.random() * strangeTypes.length)];
+            strangeProps = colorType;
+          } else if (isColorful) {
             colorType = colorfulTypes[Math.floor(Math.random() * colorfulTypes.length)];
           } else {
-            // Weighted toward silver-blue
             const weights = [40, 25, 20, 10, 5];
-            let r = Math.random() * 100;
-            let colorIdx = 0;
-            for (let j = 0; j < weights.length; j++) {
-              r -= weights[j];
-              if (r <= 0) { colorIdx = j; break; }
-            }
+            let r = Math.random() * 100, colorIdx = 0;
+            for (let j = 0; j < weights.length; j++) { r -= weights[j]; if (r <= 0) { colorIdx = j; break; } }
             colorType = silverTypes[colorIdx];
           }
 
@@ -2371,6 +2661,8 @@
             size,
             isLarge,
             isColorful,
+            isStrange,
+            strangeProps,
             bubbleAffinity: Math.random(),
             baseHue: colorType.baseHue + rand(-8, 8),
             baseSatMin: colorType.satRange[0],
@@ -2380,7 +2672,7 @@
             phase: rand(0, 1000),
             breakout: 0,
             tailPhase: rand(0, Math.PI * 2),
-            scaleShimmer: rand(0.8, 1.2),
+            scaleShimmer: rand(1.1, 1.5), // More shimmer base
             bodyTone: rand(-5, 5),
             // New: body undulation for natural swimming
             bodyPhase: rand(0, Math.PI * 2),
@@ -2482,13 +2774,14 @@
         ctx.save();
         ctx.globalCompositeOperation = 'screen';
         ctx.globalAlpha = 0.12;
-        const haze = ctx.createRadialGradient(gx, gy, 10, gx, gy, 360);
+        const hazeRadius = 252; // Reduced by 30% from 360
+        const haze = ctx.createRadialGradient(gx, gy, 10, gx, gy, hazeRadius);
         haze.addColorStop(0, 'rgba(190,240,255,0.24)');
         haze.addColorStop(0.25, 'rgba(170,235,255,0.09)');
         haze.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = haze;
         ctx.beginPath();
-        ctx.arc(gx, gy, 360, 0, Math.PI * 2);
+        ctx.arc(gx, gy, hazeRadius, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       }
@@ -2640,6 +2933,7 @@
       // Realistic fish rendering - silver schooling fish with metallic sheen
       // Realistic fish rendering with natural swimming motion
       function drawFish(f, t) {
+        if (isNaN(f.x) || isNaN(f.y)) { f.x = Math.random() * W; f.y = Math.random() * H; f.vx = 0; f.vy = 0; return; }
         // Response lifecycle & visual state
         if (f.response && performance.now() - f.response.startTime >= f.response.duration) f.response = null;
         let responseSpinOffset = 0, responseShimmerBoost = 0, responseColorStr = 0;
@@ -2723,17 +3017,87 @@
         ctx.fillStyle = bodyGrad;
         ctx.beginPath();
 
-        // Body with wave deformation
+        // Body with wave deformation + strange shape modifications
         const wave1 = bodyWave * s * 0.5;
         const wave2 = bodyWave * s * 0.8;
 
-        ctx.moveTo(s * 2.3, 0);
-        ctx.quadraticCurveTo(s * 1.2, -s * 0.75 + wave1, -s * 0.8, -s * 0.6 + wave2);
-        ctx.quadraticCurveTo(-s * 2.0, -s * 0.12 + wave2 * 0.5, -s * 2.3, wave2 * 0.3);
-        ctx.quadraticCurveTo(-s * 2.0, s * 0.12 + wave2 * 0.5, -s * 0.8, s * 0.6 + wave2);
-        ctx.quadraticCurveTo(s * 1.2, s * 0.75 + wave1, s * 2.3, 0);
+        let headLen = 2.3, spineY = 0.75, tailX = 2.0, tailY = 0.6;
+        let bellyY = 0.6; // Separate belly for hatchetfish
+
+        if (f.isStrange && f.strangeProps) {
+          const p = f.strangeProps;
+          if (p.elongated) { headLen *= p.elongated; tailX *= p.elongated; spineY *= (1.2 / p.elongated); }
+          if (p.wider) { spineY *= p.wider; tailY *= p.wider; headLen *= 0.8; }
+          if (p.hasLure) { headLen *= 1.1; spineY *= 1.2; }
+          if (p.deepBelly) { bellyY = 1.6; tailY = 0.4; headLen = 1.8; }
+        }
+
+        ctx.moveTo(s * headLen, 0);
+        // Dorsal (top)
+        ctx.quadraticCurveTo(s * (headLen * 0.5), -s * spineY + wave1, -s * (tailX * 0.4), -s * tailY + wave2);
+        // Tail back
+        ctx.quadraticCurveTo(-s * tailX, -s * 0.12 + wave2 * 0.5, -s * (tailX + 0.3), wave2 * 0.3);
+        ctx.quadraticCurveTo(-s * tailX, s * 0.12 + wave2 * 0.5, -s * (tailX * 0.4), s * (f.isStrange && f.strangeProps?.deepBelly ? bellyY : tailY) + wave2);
+        // Ventral (bottom)
+        ctx.quadraticCurveTo(s * (headLen * 0.5), s * (f.isStrange && f.strangeProps?.deepBelly ? bellyY : spineY) + wave1, s * headLen, 0);
         ctx.closePath();
         ctx.fill();
+
+        // Strange Bioluminescence & Features
+        if (f.isStrange && f.strangeProps) {
+          const p = f.strangeProps;
+
+          // Clownfish stripes special rendering
+          if (p.isClown) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            const stripes = [s * 1.5, s * 0.4, -s * 0.7]; // Positions for 3 stripes
+            const sw = s * 0.4; // Width
+            for (const sx of stripes) {
+              ctx.beginPath();
+              // Create a band that follows the body curve roughly
+              ctx.ellipse(sx, 0, sw, s * 0.8, 0, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+
+          if (p.biolum) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            // Glowing lure for Angler
+            if (p.hasLure) {
+              const lureX = s * headLen * 0.6;
+              const lureY = -s * spineY * 1.3 + wave1;
+              ctx.strokeStyle = `hsla(${f.baseHue}, 100%, 80%, ${alpha * 0.3})`;
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(s * headLen * 0.4, -s * spineY * 0.5);
+              ctx.quadraticCurveTo(s * headLen * 0.5, -s * spineY * 1.5, lureX, lureY);
+              ctx.stroke();
+
+              ctx.fillStyle = `hsla(${f.baseHue}, 100%, 90%, ${alpha})`;
+              ctx.beginPath();
+              ctx.arc(lureX, lureY, s * 0.25, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            // Side lights for Hatchet
+            if (p.deepBelly) {
+              ctx.fillStyle = `hsla(${f.baseHue}, 100%, 85%, ${alpha * 0.6})`;
+              for (let i = 0; i < 4; i++) {
+                ctx.beginPath();
+                ctx.arc(s * (1.0 - i * 0.4), s * 0.8 + wave1, s * 0.12, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+            // General biolum spots
+            if (!p.hasLure && !p.deepBelly) {
+              ctx.fillStyle = `hsla(${f.baseHue}, 100%, 80%, ${alpha * 0.5})`;
+              ctx.beginPath();
+              ctx.arc(s * headLen * 0.4, wave1, s * 0.3, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            ctx.restore();
+          }
+        }
 
         // === TAIL with natural swing ===
         ctx.fillStyle = `hsla(${hue + 3},${sat}%,${lit - 8}%,${alpha * 0.88})`;
@@ -2769,7 +3133,7 @@
           ctx.fill();
         }
 
-        // === METALLIC SHIMMER - Enhanced during flash and when facing mouse ===
+        // === METALLIC SHIMMER - Enhanced Visual Impact ===
         ctx.globalCompositeOperation = 'screen';
 
         // Calculate alignment with mouse for "sparkle" effect
@@ -2777,30 +3141,38 @@
         let adiff = ang - angleToMouse;
         while (adiff > Math.PI) adiff -= Math.PI * 2;
         while (adiff < -Math.PI) adiff += Math.PI * 2;
-        // Sparkle when heading is towards mouse (range around 0)
-        const sparkleAlignment = Math.pow(Math.max(0, Math.cos(adiff)), 8);
-        const sparkleBoost = sparkleAlignment * 2.2 * (0.8 + 0.4 * Math.sin(t * 0.012 + f.hueSeed * 10));
 
-        const shimmerBase = (0.12 + nearPow * 0.25) * (f.scaleShimmer || 1);
-        const shimmerFlash = (migration.flashIntensity || 0) * 0.4;
+        const sparkleAlignment = Math.pow(Math.max(0, Math.cos(adiff)), 6); // Sharper falloff but more sensitive
+        const sparkleBoost = sparkleAlignment * 3.5 * (0.8 + 0.4 * Math.sin(t * 0.012 + f.hueSeed * 10));
+
+        const shimmerBase = (0.2 + nearPow * 0.4) * (f.scaleShimmer || 1.2);
+        const shimmerFlash = (migration.flashIntensity || 0) * 0.6;
         const shimmerIntensity = shimmerBase + shimmerFlash + responseShimmerBoost + sparkleBoost;
         ctx.globalAlpha = alpha * Math.min(1, shimmerIntensity);
 
         const hlGrad = ctx.createLinearGradient(-s * 1.5, 0, s * 1.8, 0);
         hlGrad.addColorStop(0, 'rgba(255,255,255,0)');
-        hlGrad.addColorStop(0.3, 'rgba(240,250,255,0.6)');
-        hlGrad.addColorStop(0.6, 'rgba(255,255,255,0.9)');
+        hlGrad.addColorStop(0.3, 'rgba(240,250,255,0.7)');
+        hlGrad.addColorStop(0.6, 'rgba(255,255,255,1.0)'); // Full bright
         hlGrad.addColorStop(1, 'rgba(240,250,255,0)');
         ctx.strokeStyle = hlGrad;
-        ctx.lineWidth = Math.max(0.8, s * 0.15);
+        ctx.lineWidth = Math.max(1.0, s * 0.2); // Thicker glint
         ctx.beginPath();
         ctx.moveTo(s * 1.8, -s * 0.05 + wave1 * 0.2);
         ctx.quadraticCurveTo(s * 0.5, -s * 0.18 + wave1 * 0.3, -s * 1.5, -s * 0.08 + wave2 * 0.3);
         ctx.stroke();
 
-        ctx.globalAlpha = alpha * shimmerIntensity * 0.5;
-        ctx.strokeStyle = 'rgba(200,230,255,0.5)';
-        ctx.lineWidth = Math.max(0.5, s * 0.08);
+        // Extra point sparklers for high-alignment shimmer
+        if (sparkleAlignment > 0.88) {
+          ctx.fillStyle = f.isStrange ? `hsla(${f.baseHue}, 100%, 80%, 0.8)` : 'rgba(255,255,255,0.7)';
+          ctx.beginPath();
+          ctx.arc(s * 0.5, -s * 0.1 + wave1 * 0.2, s * 0.2 * sparkleAlignment, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.globalAlpha = alpha * shimmerIntensity * 0.6;
+        ctx.strokeStyle = 'rgba(220,240,255,0.6)';
+        ctx.lineWidth = Math.max(0.6, s * 0.1);
         ctx.beginPath();
         ctx.moveTo(s * 1.2, -s * 0.35 + wave1 * 0.2);
         ctx.quadraticCurveTo(s * 0.2, -s * 0.48 + wave1 * 0.25, -s * 0.8, -s * 0.38 + wave2 * 0.25);
@@ -2969,6 +3341,8 @@
 
 
 
+          if (f.isColorful) { p_attrW *= 2.5; p_cohW *= 0.3; } // Concentrate colorful fish at front (higher attraction)
+
           if (f.personality === 'curious') { p_attrW *= 1.6; p_cohW *= 0.5; }
           else if (f.personality === 'shy') {
             p_cohW *= 1.4; p_attrW *= 0.7;
@@ -3049,12 +3423,15 @@
             const mvx = avx * inv, mvy = avy * inv;
             const mx = cox * inv, my = coy * inv;
 
+            const predatorActive = predator.active && predator.shark;
+            const panicMod = predatorActive ? 2.5 : 1.0; // School tightens up during panic
+
             // Standardize gating for all schooling forces
             if (!(f.suppressAttraction > 0)) {
-              ax += (mvx - f.vx) * p_alignW * cohesionMod;
-              ay += (mvy - f.vy) * p_alignW * cohesionMod;
-              ax += (mx - f.x) * 0.0009 * p_cohW * cohesionMod;
-              ay += (my - f.y) * 0.0009 * p_cohW * cohesionMod;
+              ax += (mvx - f.vx) * p_alignW * cohesionMod * panicMod;
+              ay += (mvy - f.vy) * p_alignW * cohesionMod * panicMod;
+              ax += (mx - f.x) * 0.0009 * p_cohW * cohesionMod * panicMod;
+              ay += (my - f.y) * 0.0009 * p_cohW * cohesionMod * panicMod;
             } else {
               // During expansion, apply a slight separation boost to enhance scattering
               ax += sepX * 1.5;
@@ -3195,7 +3572,8 @@
           }
 
           // --- Frame-rate independent drag ---
-          const migSpeedMod = migration.speedMod || 1;
+          const predatorActive = predator.active && predator.shark;
+          const migSpeedMod = (migration.speedMod || 1) * (predatorActive ? 1.8 : 1.0); // Boost speed when shark is hunting
           const baseDragVal = baseDrag + (f.isLarge ? -0.005 : (f.size > 4 ? 0.00 : 0.02));
           const dragDecay = Math.pow(baseDragVal, dt / 16.667);
 
@@ -3243,8 +3621,16 @@
             const effAx = hx * fwd + (-hy) * lat * 0.05;
             const effAy = hy * fwd + hx * lat * 0.05;
 
-            f.vx = (f.vx + effAx * dt * accel * speedFactor * migSpeedMod) * dragDecay;
-            f.vy = (f.vy + effAy * dt * accel * speedFactor * migSpeedMod) * dragDecay;
+
+            // --- Predator Panic Boost ---
+            let panicBoost = 1.0;
+            if (predator.active && predator.shark) {
+              const pdx = f.x - predator.shark.x, pdy = f.y - predator.shark.y;
+              const pdist = Math.hypot(pdx, pdy);
+              if (pdist < 400) panicBoost = 1.0 + (1.0 - pdist / 400) * 2.5;
+            }
+            f.vx = (f.vx + effAx * dt * accel * speedFactor * migSpeedMod * panicBoost) * dragDecay;
+            f.vy = (f.vy + effAy * dt * accel * speedFactor * migSpeedMod * panicBoost) * dragDecay;
 
             // --- Velocity steering: bleed velocity direction toward heading ---
             // This is what creates the visible curved pursuit path
@@ -3271,7 +3657,16 @@
           const boost = f.expansionBoost || 1.0;
           if (f.expansionBoost > 1.0) f.expansionBoost -= 0.05;
 
-          const maxSpeed = (f.isLarge ? 2.5 : (f.size > 4 ? 3.5 : 4.5)) * speedFactor * boost;
+
+          let panic = 1.0;
+          if (predator.active && predator.shark && !isNaN(predator.shark.x)) {
+            const pdx = f.x - predator.shark.x;
+            const pdy = f.y - predator.shark.y;
+            const pdist = Math.hypot(pdx, pdy);
+            if (pdist < 500) panic = 1.0 + (1.0 - pdist / 500) * 4.0;
+          }
+          const maxSpeed = (f.isLarge ? 2.5 : (f.size > 4 ? 3.5 : 4.5)) * speedFactor * boost * panic;
+
           if (speed > maxSpeed) {
             f.vx = (f.vx / speed) * maxSpeed;
             f.vy = (f.vy / speed) * maxSpeed;
@@ -3299,6 +3694,7 @@
         const t = performance.now();
         const dt = Math.min(50, t - lastT);
         lastT = t;
+        pointer.idle += dt; // Increment idle timer for predator logic
 
         // Background layers
         drawBackground(t);
@@ -3313,6 +3709,12 @@
         updateMegafauna(dt);
         drawMegafauna(t);
 
+
+
+        // Jellyfish update & draw (between fauna and fish)
+        updateJellyfish(dt, t);
+        drawJellyfish(t);
+
         drawSnow(t);
         drawCurrentLines(t);
         drawThermalCore(t);
@@ -3320,6 +3722,10 @@
         drawEventEffects(t);
         drawDensityGlow();
         drawSchoolFlash();
+
+        // Crabs (on bottom)
+
+
 
         // Render POI visual for debugging (Subtle blue pulse)
         if (pointer.idle > 1000) {
@@ -3341,8 +3747,9 @@
         updateMicroSurprises(dt, t);
 
         // Predator: update state, draw shark shadow behind fish school
+        updatePredatorSystem(dt);
         updatePredator(dt);
-        drawPredator();
+
 
         // Simulation
         step(dt, t);
@@ -3364,6 +3771,7 @@
 
         // Foreground micro-surprise visuals (drawn above fish school)
         drawFishFry(t);
+        drawPredator(); // MOVED ON TOP
         drawCollectibles(t);
         drawCollectionNotifications(t);
 
@@ -3380,6 +3788,7 @@
           ctx.restore();
         }
 
+
         requestAnimationFrame(frame);
       }
 
@@ -3392,6 +3801,7 @@
       initSpatial();
       initSubSchools();
       initSeagrass();
+
 
       // Initial pointer position
       pointer.x = W * 0.5;
@@ -3407,6 +3817,7 @@
 
       // First event after 5 seconds if user hasn't moved
       events.lastEventTime = performance.now() - 35000;
+
 
       requestAnimationFrame(frame);
     })();
