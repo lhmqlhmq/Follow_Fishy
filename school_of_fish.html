@@ -2125,22 +2125,26 @@
             life: 0,
             maxLife: rand(3000, 5000)
           });
-        } else if (chosen === 2) { // starDrop — collectible star appears
-          collectibles.push({
-            type: 'star',
-            x: rand(W * 0.12, W * 0.88), y: rand(H * 0.08, H * 0.42),
-            vx: rand(-0.25, 0.25), vy: rand(0.15, 0.35),
-            phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(6000, 10000),
-            collected: false, collectAnim: 0
-          });
-        } else if (chosen === 3) { // gemDrop — collectible gem drifts from top
-          collectibles.push({
-            type: 'gem',
-            x: rand(W * 0.12, W * 0.88), y: rand(-45, H * 0.15),
-            vx: rand(-0.2, 0.2), vy: rand(0.2, 0.4),
-            phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(7000, 12000),
-            collected: false, collectAnim: 0
-          });
+        } else if (chosen === 2) { // starDrop — collectible star appears (DOUBLED)
+          for (let i = 0; i < 2; i++) {
+            collectibles.push({
+              type: 'star',
+              x: rand(W * 0.12, W * 0.88), y: rand(H * 0.08, H * 0.42),
+              vx: rand(-0.25, 0.25), vy: rand(0.15, 0.35),
+              phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(6000, 10000),
+              collected: false, collectAnim: 0
+            });
+          }
+        } else if (chosen === 3) { // gemDrop — collectible gem drifts (DOUBLED)
+          for (let i = 0; i < 2; i++) {
+            collectibles.push({
+              type: 'gem',
+              x: rand(W * 0.12, W * 0.88), y: rand(-45, H * 0.15),
+              vx: rand(-0.2, 0.2), vy: rand(0.2, 0.4),
+              phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(7000, 12000),
+              collected: false, collectAnim: 0
+            });
+          }
         } else { // colorFish — one fish bursts out colorfully then returns
           if (fish.length > 0) {
             const f = fish[Math.floor(Math.random() * fish.length)];
@@ -2164,11 +2168,11 @@
       function updateMicroSurprises(dt, t) {
         microSurprises.timer -= dt;
         // Always ensure at least one collectible if none exist
-        if (collectibles.length === 0) {
+        if (collectibles.length < 2) {
           spawnMicroSurprise(t);
-          microSurprises.timer = rand(3000, 6000); // Shorter cooldown
+          microSurprises.timer = rand(1500, 3000); // DOUBLED FREQUENCY
         }
-        if (microSurprises.timer <= 0) { spawnMicroSurprise(t); microSurprises.timer = rand(3000, 6000); }
+        if (microSurprises.timer <= 0) { spawnMicroSurprise(t); microSurprises.timer = rand(1500, 3000); }
 
         // Update fish fry groups
         for (let i = fishFryGroups.length - 1; i >= 0; i--) {
@@ -3661,10 +3665,13 @@
 
             // --- Predator Panic Boost ---
             let panicBoost = 1.0;
-            if (predator.active && predator.shark) {
-              const pdx = f.x - predator.shark.x, pdy = f.y - predator.shark.y;
+            for (const s of predator.sharks) {
+              if (s.fleeing) continue;
+              const pdx = f.x - s.x, pdy = f.y - s.y;
               const pdist = Math.hypot(pdx, pdy);
-              if (pdist < 400) panicBoost = 1.0 + (1.0 - pdist / 400) * 2.5;
+              if (pdist < 400) {
+                panicBoost = Math.max(panicBoost, 1.0 + (1.0 - pdist / 400) * 2.5);
+              }
             }
             f.vx = (f.vx + effAx * dt * accel * speedFactor * migSpeedMod * panicBoost) * dragDecay;
             f.vy = (f.vy + effAy * dt * accel * speedFactor * migSpeedMod * panicBoost) * dragDecay;
@@ -3696,11 +3703,14 @@
 
 
           let panic = 1.0;
-          if (predator.active && predator.shark && !isNaN(predator.shark.x)) {
-            const pdx = f.x - predator.shark.x;
-            const pdy = f.y - predator.shark.y;
+          for (const s of predator.sharks) {
+            if (s.fleeing) continue;
+            const pdx = f.x - s.x;
+            const pdy = f.y - s.y;
             const pdist = Math.hypot(pdx, pdy);
-            if (pdist < 500) panic = 1.0 + (1.0 - pdist / 500) * 4.0;
+            if (pdist < 500) {
+              panic = Math.max(panic, 1.0 + (1.0 - pdist / 500) * 4.0);
+            }
           }
           const maxSpeed = (f.isLarge ? 2.5 : (f.size > 4 ? 3.5 : 4.5)) * speedFactor * boost * panic;
 
