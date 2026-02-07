@@ -55,6 +55,28 @@
       }
     }
 
+    /* Mobile specific tight packing */
+    @media (max-width: 599px) {
+      .hud {
+        padding: 6px 8px;
+        gap: 4px;
+      }
+
+      .hud .grp {
+        gap: 4px;
+      }
+
+      .hud .pill {
+        min-width: 46px;
+        padding: 3px 6px;
+      }
+
+      .hud button {
+        width: 24px;
+        height: 20px;
+      }
+    }
+
 
     .hud .grp {
       display: flex;
@@ -169,10 +191,6 @@
       <button id="cntMinus" title="Fewer fish">−</button>
       <div class="pill" id="cntVal">800</div>
       <button id="cntPlus" title="More fish">+</button>
-    </div>
-    <div class="grp" style="background: rgba(100, 200, 255, 0.15); border: 1px solid rgba(130, 220, 255, 0.3);">
-      <span style="opacity:.7;font-weight:800;color:#99f2ff;">STATUS</span>
-      <div class="pill" id="modeVal" style="width: 85px; color: #fff; font-weight: 800;">Following</div>
     </div>
     <button id="snd" title="Toggle sound (default off)">Sound</button>
   </div>
@@ -463,28 +481,10 @@
 
       const spdVal = document.getElementById('spdVal');
       const cntVal = document.getElementById('cntVal');
-      const modeVal = document.getElementById('modeVal');
 
       function updateHud() {
         spdVal.textContent = SPEED.toFixed(2) + '×';
         cntVal.textContent = String(targetFishCount);
-        if (modeVal) {
-          let statusStr = 'Following';
-          let statusColor = '#eee';
-          if (world.followingMegafauna) {
-            const type = world.followingMegafauna.type || 'Marine Life';
-            statusStr = 'Follow: ' + type.charAt(0).toUpperCase() + type.slice(1);
-            statusColor = '#9f7'; // Success green
-          } else if (world.autonomousMode > 0.8) {
-            statusStr = 'Autonomous';
-            statusColor = '#4af';
-          } else if (world.autonomousMode > 0.1) {
-            statusStr = 'Drifting...';
-            statusColor = '#fa4';
-          }
-          modeVal.textContent = statusStr;
-          modeVal.style.color = statusColor;
-        }
       }
 
       updateHud();
