@@ -172,6 +172,36 @@
         color: rgba(255, 255, 255, 0.35);
       }
     }
+
+    .error-toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255, 50, 50, 0.9);
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-family: system-ui, sans-serif;
+      font-size: 13px;
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      display: none;
+      animation: slideDown 0.3s ease-out;
+      pointer-events: none;
+    }
+
+    @keyframes slideDown {
+      from {
+        transform: translate(-50%, -20px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translate(-50%, 0);
+        opacity: 1;
+      }
+    }
   </style>
 </head>
 
@@ -198,6 +228,7 @@
 
   <div class="hint" id="hint">Move to lead the school • Tap fish to play • Collect ⭐💎</div>
   <div class="watermark">Follow Fishy, Created by Jason Li</div>
+  <div id="extError" class="error-toast">⚠️ 检测到 "Site Blocker" 插件报错，请忽略或禁用该插件</div>
 
   <script>
     (() => {
@@ -210,6 +241,13 @@
           console.warn("检测到来自浏览器插件（如 Site Blocker）的错误。");
           console.warn("该错误不属于鱼群模拟程序。请尝试在‘无痕模式’下运行以确认。");
           console.groupEnd();
+
+          // Show UI toast
+          const t = document.getElementById('extError');
+          if (t) {
+            t.style.display = 'block';
+            setTimeout(() => t.style.display = 'none', 6000);
+          }
         }
       }, true);
 
