@@ -1179,7 +1179,7 @@
           targetX: sx + entryDx * 800,
           targetY: sy + entryDy * 800,
           life: 0,
-          maxLife: 25000,
+          maxLife: 35000, // Longer presence for herding behavior
           fleeMeter: 0,
           fleeing: false,
           fleeProgress: 0,
@@ -1242,10 +1242,13 @@
             my = H * 0.5;
           }
 
-          // Add random wandering around the school center
-          s.wanderPhase += dt * 0.0005;
-          s.targetOffsetX = Math.sin(s.wanderPhase) * 400 + Math.sin(s.wanderPhase * 1.7) * 150;
-          s.targetOffsetY = Math.cos(s.wanderPhase * 0.8) * 300 + Math.cos(s.wanderPhase * 1.3) * 100;
+          // BIOLOGICAL HUNTING: Wide spiraling corral followed by quick strike
+          s.wanderPhase += dt * 0.0004;
+          const corralRadiusX = 500 + Math.sin(s.wanderPhase * 0.5) * 150;
+          const corralRadiusY = 350 + Math.cos(s.wanderPhase * 0.7) * 100;
+
+          s.targetOffsetX = Math.cos(s.wanderPhase) * corralRadiusX;
+          s.targetOffsetY = Math.sin(s.wanderPhase) * corralRadiusY;
 
           const dx = (mx + s.targetOffsetX) - s.x;
           const dy = (my + s.targetOffsetY) - s.y;
@@ -1253,31 +1256,43 @@
           const dist = Math.hypot(dx, dy) || 1;
 
           if (!s.state) s.state = "CHASING";
-          if (!s.stateTimer) s.stateTimer = 3000;
+          if (!s.stateTimer) s.stateTimer = 4000;
           s.stateTimer -= dt;
 
           let moveSpd = 4.0;
 
           if (s.state === "CHASING") {
-            moveSpd = 2.4 + (dist < 800 ? (1.0 - dist / 800) * 2.0 : 0);
-            if (dist < 300 && s.stateTimer < 0) {
+            // SLOW PROWLING
+            moveSpd = 1.6 + (dist < 1000 ? (1.0 - dist / 1000) * 1.5 : 0);
+            if (dist < 350 && s.stateTimer < 0) {
               s.state = "LUNGING";
-              s.stateTimer = 1500;
+              s.stateTimer = 1400;
             }
           } else if (s.state === "LUNGING") {
-            moveSpd = 7.5; // AGGRESSIVE BUT CONTROLLED
+            // SUDDEN STRIKE
+            moveSpd = 8.8;
+            // Charge directly through center during lunge
+            const lungeDx = mx - s.x, lungeDy = my - s.y;
+            const lungeH = Math.atan2(lungeDy, lungeDx);
+            let ladiff = lungeH - s.heading;
+            while (ladiff > Math.PI) ladiff -= Math.PI * 2;
+            while (ladiff < -Math.PI) ladiff += Math.PI * 2;
+            s.heading += ladiff * 0.05; // Committed path
+
             if (s.stateTimer <= 0) {
               s.state = "CHASING";
-              s.stateTimer = 3000 + Math.random() * 3000;
+              s.stateTimer = 4000 + Math.random() * 3000;
             }
           }
 
           // Heading update - snappy to track fast fish
-          const targetH = Math.atan2(dy, dx);
-          let adiff = targetH - s.heading;
-          while (adiff > Math.PI) adiff -= Math.PI * 2;
-          while (adiff < -Math.PI) adiff += Math.PI * 2;
-          s.heading += adiff * 0.04;
+          if (s.state !== "LUNGING") {
+            const targetH = Math.atan2(dy, dx);
+            let adiff = targetH - s.heading;
+            while (adiff > Math.PI) adiff -= Math.PI * 2;
+            while (adiff < -Math.PI) adiff += Math.PI * 2;
+            s.heading += adiff * 0.035; // Heavy inertia
+          }
 
           s.vx = Math.cos(s.heading) * moveSpd;
           s.vy = Math.sin(s.heading) * moveSpd;
