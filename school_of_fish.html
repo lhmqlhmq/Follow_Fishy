@@ -201,6 +201,18 @@
 
   <script>
     (() => {
+      // --- External Error Interceptor ---
+      // Distinguishes project errors from browser extension errors (like Site Blocker)
+      window.addEventListener('error', (e) => {
+        const file = e.filename || '';
+        if (file.includes('site-blocker') || file.includes('extension')) {
+          console.group("%c ⚡ 外部插件错误检测 (External Extension Error) %c", "background: #f4d03f; color: #000; padding: 4px; border-radius: 4px;", "");
+          console.warn("检测到来自浏览器插件（如 Site Blocker）的错误。");
+          console.warn("该错误不属于鱼群模拟程序。请尝试在‘无痕模式’下运行以确认。");
+          console.groupEnd();
+        }
+      }, true);
+
       const canvas = document.getElementById('c');
       const ctx = canvas.getContext('2d', { alpha: false });
 
