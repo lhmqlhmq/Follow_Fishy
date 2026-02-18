@@ -331,8 +331,8 @@
 
       function initSeagrass() {
         seagrass.length = 0;
-        // 3x 密度
-        const count = Math.floor(W / 8);
+        // 适中的密度
+        const count = Math.floor(W / 14);
         for (let i = 0; i < count; i++) {
           const type = pickSeagrassType();
           const hue = rand(type.hueRange[0], type.hueRange[1]);
@@ -422,9 +422,9 @@
 
         // Re-calculate density if needed
         const screenArea = (W * H) / (1920 * 1080);
-        const baseCount = isMobile ? 400 : 800;
+        const baseCount = 700;
         targetFishCount = Math.floor(baseCount * Math.sqrt(screenArea + 0.5));
-        targetFishCount = clamp(targetFishCount, isMobile ? 300 : 500, 2000);
+        targetFishCount = clamp(targetFishCount, 400, 2000);
         updateHud();
 
         initSpatial();
@@ -453,7 +453,22 @@
           lastPointerMove = now;
         }
 
-
+        // 触摸/鼠标经过即收集星星和宝石
+        for (let i = collectibles.length - 1; i >= 0; i--) {
+          const c = collectibles[i];
+          if (c.collected) continue;
+          if (Math.hypot(nx - c.x, ny - c.y) < 50) { collectItem(c); }
+        }
+        // 触摸/鼠标经过即激活小动物逃跑
+        for (let i = critters.length - 1; i >= 0; i--) {
+          const c = critters[i];
+          if (c.scared) continue;
+          if (Math.hypot(nx - c.x, ny - c.y) < 90 * c.scale) {
+            c.scared = true;
+            c.speed *= 5;
+            if (soundOn && audio) audio.bubbleTick(0.8);
+          }
+        }
 
         pointer.vx = (nx - pointer.x) / dt;
         pointer.vy = (ny - pointer.y) / dt;
@@ -566,7 +581,7 @@
           }
         }
 
-        console.log("%c EXTRA-AGGERATED FLASH EXPANSION! %c", "background: #f00; color: #fff; font-size: 14px; font-weight: bold;", "");
+
 
         // --- Visual Shockwave ---
         events.flashTimer = 800; // Screen flash
@@ -593,8 +608,8 @@
       }
       // ---------- HUD ----------
       const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      let SPEED = isMobile ? 0.25 : 0.6;
-      let targetFishCount = isMobile ? 350 : 800;
+      let SPEED = 1.2;
+      let targetFishCount = 700;
 
       const spdVal = document.getElementById('spdVal');
       const cntVal = document.getElementById('cntVal');
