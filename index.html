@@ -159,64 +159,17 @@
     /* Mobile specific tight packing */
     @media (max-width: 599px) {
       .hud {
-        padding: 5px 8px;
-        gap: 4px;
-        top: 6px;
-        left: 6px;
-        right: 6px;
-        font-size: 10px;
+        padding: 4px 6px;
+        gap: 3px;
+        top: 4px;
+        left: 4px;
+        right: 4px;
+        font-size: 9px;
+        border-radius: 8px;
       }
 
       .hud .grp {
-        gap: 3px;
-      }
-
-      .hud .stats {
-        gap: 5px;
-        margin-right: 6px;
-      }
-
-      .hud .stat-item {
-        font-size: 10px;
         gap: 2px;
-      }
-
-      .hud .stats-count {
-        font-size: 10px;
-        min-width: 12px;
-      }
-
-      .hud .controls-right {
-        gap: 6px;
-      }
-
-      .hud .pill {
-        min-width: 40px;
-        padding: 2px 5px;
-        font-size: 10px;
-      }
-
-      .hud button {
-        width: 22px;
-        height: 18px;
-        font-size: 10px;
-      }
-
-      .hud .grp>span {
-        font-size: 9px !important;
-      }
-
-      #snd {
-        padding: 2px 5px;
-        font-size: 9px;
-      }
-    }
-
-    @media (max-width: 400px) {
-      .hud {
-        padding: 4px 6px;
-        gap: 3px;
-        font-size: 9px;
       }
 
       .hud .stats {
@@ -226,16 +179,74 @@
 
       .hud .stat-item {
         font-size: 9px;
+        gap: 1px;
+      }
+
+      .hud .stats-count {
+        font-size: 9px;
+        min-width: 10px;
+      }
+
+      .hud .controls-right {
+        gap: 4px;
       }
 
       .hud .pill {
-        min-width: 34px;
+        min-width: 32px;
         padding: 2px 4px;
+        font-size: 9px;
       }
 
       .hud button {
-        width: 20px;
+        width: 18px;
         height: 16px;
+        font-size: 9px;
+        border-radius: 4px;
+      }
+
+      .hud .grp>span {
+        font-size: 8px !important;
+        letter-spacing: -0.2px;
+      }
+
+      #snd {
+        padding: 2px 4px;
+        font-size: 8px;
+      }
+    }
+
+    @media (max-width: 400px) {
+      .hud {
+        padding: 3px 4px;
+        gap: 2px;
+        font-size: 8px;
+        top: 2px;
+        left: 2px;
+        right: 2px;
+      }
+
+      .hud .stats {
+        gap: 2px;
+        margin-right: 2px;
+      }
+
+      .hud .stat-item {
+        font-size: 8px;
+      }
+
+      .hud .pill {
+        min-width: 28px;
+        padding: 1px 3px;
+      }
+
+      .hud button {
+        width: 16px;
+        height: 14px;
+      }
+
+      /* Hide "SPEED" and "FISH" labels on extremely small screens to save space */
+      .hud .grp>span {
+        display: none;
       }
     }
 
