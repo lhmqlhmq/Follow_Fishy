@@ -2850,34 +2850,63 @@
       function updateMicroSurprises(dt, t) {
         microSurprises.timer -= dt;
 
-        // Ensure minimum collectibles on screen: at least 4 stars and 4 gems, max 10 total
-        const activeCollectibles = collectibles.filter(c => !c.collected);
-        const starCount = activeCollectibles.filter(c => c.type === 'star').length;
-        const gemCount = activeCollectibles.filter(c => c.type === 'gem').length;
-        const totalActive = activeCollectibles.length;
+        // --- STRICT COLLECTIBLE CONTROL (V6) ---
+        const MAX_TOTAL_ACTIVE = 10;
+        const MIN_SPACING = 150;
 
-        if (totalActive < 10) {
-          if (starCount < 4) {
-            const need = Math.min(4 - starCount, 10 - totalActive);
-            for (let i = 0; i < need; i++) {
-              collectibles.push({
-                type: 'star', x: rand(W * 0.08, W * 0.92), y: rand(H * 0.06, H * 0.50),
-                vx: rand(-0.25, 0.25), vy: rand(0.15, 0.35), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(8000, 14000), collected: false, collectAnim: 0
-              });
-            }
-          }
-          // Re-calculate after potential stars
-          const currentTotal = collectibles.filter(c => !c.collected).length;
-          if (gemCount < 4 && currentTotal < 10) {
-            const need = Math.min(4 - gemCount, 10 - currentTotal);
-            for (let i = 0; i < need; i++) {
-              collectibles.push({
-                type: 'gem', x: rand(W * 0.08, W * 0.92), y: rand(-45, H * 0.25),
-                vx: rand(-0.2, 0.2), vy: rand(0.2, 0.4), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(9000, 15000), collected: false, collectAnim: 0
-              });
+        let activeCollectibles = collectibles.filter(c => !c.collected);
+        let totalActive = activeCollectibles.length;
+
+        // If we have room for more
+        if (totalActive < MAX_TOTAL_ACTIVE) {
+          const starCount = activeCollectibles.filter(c => c.type === 'star').length;
+          const gemCount = activeCollectibles.filter(c => c.type === 'gem').length;
+
+          // Re-fill if below minimum (4 each) OR if we have gaps up to 10
+          if (starCount < 4 || gemCount < 4 || totalActive < 8) {
+            // Try to spawn one item this tick if needed
+            let typeToSpawn = null;
+            if (starCount < 4) typeToSpawn = 'star';
+            else if (gemCount < 4) typeToSpawn = 'gem';
+            else if (totalActive < MAX_TOTAL_ACTIVE) typeToSpawn = Math.random() > 0.5 ? 'star' : 'gem';
+
+            if (typeToSpawn) {
+              // Spatial Distribution Logic: Try multiple times to find a clear spot
+              let spawnPos = null;
+              for (let attempt = 0; attempt < 8; attempt++) {
+                const tx = rand(W * 0.05, W * 0.95);
+                const ty = rand(H * 0.05, H * 0.95);
+
+                let tooClose = false;
+                for (const existing of activeCollectibles) {
+                  const d = Math.hypot(tx - existing.x, ty - existing.y);
+                  if (d < MIN_SPACING) { tooClose = true; break; }
+                }
+
+                if (!tooClose) {
+                  spawnPos = { x: tx, y: ty };
+                  break;
+                }
+              }
+
+              if (spawnPos) {
+                collectibles.push({
+                  type: typeToSpawn,
+                  x: spawnPos.x,
+                  y: spawnPos.y,
+                  vx: rand(-0.2, 0.2),
+                  vy: rand(-0.1, 0.2), // Slower vertical drift for better distribution
+                  phase: rand(0, Math.PI * 2),
+                  life: 0,
+                  maxLife: rand(12000, 20000), // Longer life to maintain distribution
+                  collected: false,
+                  collectAnim: 0
+                });
+              }
             }
           }
         }
+
         if (microSurprises.timer <= 0) { spawnMicroSurprise(t); microSurprises.timer = rand(1500, 3000); }
 
         // Update fish fry groups
