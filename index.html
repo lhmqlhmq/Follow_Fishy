@@ -253,6 +253,8 @@
             t.style.display = 'block';
             setTimeout(() => t.style.display = 'none', 6000);
           }
+          // Silence the console error
+          if (e.preventDefault) e.preventDefault();
         }
       }, true);
 
@@ -429,7 +431,6 @@
 
         // --- Double Click Detection for Flash Expansion ---
         if (now - lastClickT < 400) {
-          console.log("%c [Interaction] Double-click detected! %c", "background: #22a; color: #fff;", "");
           spawnFirework(cx, cy);
           spawnCritter();
           triggerFlashExpansion(cx, cy);
@@ -2242,11 +2243,9 @@
       const critters = [];
 
       function spawnCritter() {
-        console.log("%c [Critter] spawnCritter() called %c", "background: #a2a; color: #fff;", "");
         const side = Math.random() < 0.5 ? -1 : 1;
         const types = ['pony', 'cat', 'rabbit', 'pig'];
         const type = types[Math.floor(Math.random() * types.length)];
-        console.log(`[Critter] Spawning ${type} from side: ${side}`);
         const h = Math.random() * 360;
         const s = rand(50, 90);
         const l = rand(40, 70);
