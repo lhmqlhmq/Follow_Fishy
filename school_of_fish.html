@@ -303,7 +303,7 @@
         return f;
       }
 
-      let W = window.innerWidth, H = window.innerHeight, DPR = 1, VIEW_SCALE = 1;
+      let W = window.innerWidth, H = window.innerHeight, DPR = 1, VIEW_SCALE = 1, WORLD_SCALE = 1;
       const world = {
         time: 0,
         dayCycle: 0, // 0: night, 0.5: day, 1: night
@@ -364,16 +364,30 @@
 
       function resize() {
         DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-        W = innerWidth; H = innerHeight;
+        const screenW = innerWidth, screenH = innerHeight;
 
-        // Dynamic view scale for narrow screens
-        VIEW_SCALE = W < 600 ? lerp(1.2, 1.0, clamp01((W - 320) / 280)) : 1.0;
+        // 响应式世界缩放 - 以1920为参考宽度
+        // 桌面（>=1200px）: 1.0, 平板(~768px): ~1.25, 手机(~390px): ~1.6
+        const REF_WIDTH = 1920;
+        if (screenW < 1200) {
+          WORLD_SCALE = clamp(REF_WIDTH / Math.max(screenW, screenH) * 0.65, 1.0, 2.0);
+        } else {
+          WORLD_SCALE = 1.0;
+        }
 
-        canvas.width = Math.floor(W * DPR);
-        canvas.height = Math.floor(H * DPR);
-        canvas.style.width = W + 'px';
-        canvas.style.height = H + 'px';
-        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        // 逻辑世界尺寸 = 屏幕尺寸 × 缩放因子
+        W = Math.floor(screenW * WORLD_SCALE);
+        H = Math.floor(screenH * WORLD_SCALE);
+
+        // Dynamic view scale (legacy, now handled by WORLD_SCALE)
+        VIEW_SCALE = 1.0;
+
+        canvas.width = Math.floor(screenW * DPR);
+        canvas.height = Math.floor(screenH * DPR);
+        canvas.style.width = screenW + 'px';
+        canvas.style.height = screenH + 'px';
+        // DPR handles sharpness, WORLD_SCALE shrinks content
+        ctx.setTransform(DPR / WORLD_SCALE, 0, 0, DPR / WORLD_SCALE, 0, 0);
 
         // Safe re-initialization of pointer if it's the first time
         if (pointer && (isNaN(pointer.x) || pointer.x === 0)) {
@@ -408,7 +422,7 @@
       addEventListener('pointermove', (e) => {
         const now = performance.now();
         const dt = Math.max(1, now - pointer.lastT);
-        const nx = e.clientX, ny = e.clientY;
+        const nx = e.clientX * WORLD_SCALE, ny = e.clientY * WORLD_SCALE;
 
         // Reset idle if mouse actually moved significantly (5.0px threshold to avoid sensor jitter)
         if (Math.hypot(nx - pointer.x, ny - pointer.y) > 5.0) {
@@ -432,7 +446,7 @@
 
       addEventListener('pointerdown', (e) => {
         const now = performance.now();
-        const cx = e.clientX, cy = e.clientY;
+        const cx = e.clientX * WORLD_SCALE, cy = e.clientY * WORLD_SCALE;
 
         // --- Double Click Detection for Flash Expansion ---
         if (now - lastClickT < 400) {
@@ -3339,7 +3353,7 @@
         const ang = f.heading !== undefined ? f.heading : Math.atan2(f.vy, f.vx);
 
         // Size with depth scaling and dynamic view scaling
-        const s = f.size * depthScale * VIEW_SCALE;
+        const s = f.size * depthScale;
 
         // Body undulation - S-curve wave traveling down the body
         if (!f.bodyPhase) f.bodyPhase = Math.random() * Math.PI * 2;
@@ -4053,6 +4067,8 @@
         const t = performance.now();
         const dt = Math.min(50, t - lastT);
         lastT = t;
+        // 每帧重设缩放变换矩阵
+        ctx.setTransform(DPR / WORLD_SCALE, 0, 0, DPR / WORLD_SCALE, 0, 0);
         pointer.idle += dt; // Increment idle timer for predator logic
 
         // Background layers
