@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="utf-8">
+    <title>深海鱼群音效实验室 v2 - Bio-Organic Focus</title>
+    <style>
+        :root {
+            --bg: #040810;
+            --accent: #4fc3f7;
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --text: #e0e6ed;
+        }
+
+        body {
+            margin: 0;
+            padding: 40px;
+            font-family: 'Inter', -apple-system, system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1000px;
+            width: 100%;
+        }
+
+        h1 {
+            font-weight: 300;
+            letter-spacing: 2px;
+            text-align: center;
+            margin-bottom: 5px;
+            background: linear-gradient(to right, #4fc3f7, #2196f3);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            text-align: center;
+            opacity: 0.5;
+            margin-bottom: 40px;
+            font-size: 0.9rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            padding: 32px;
+            display: flex;
+            flex-direction: column;
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+        }
+
+        .card:hover {
+            border-color: var(--accent);
+            background: rgba(255, 255, 255, 0.06);
+            transform: translateY(-8px);
+        }
+
+        .card.active {
+            border-color: var(--accent);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 20px rgba(79, 195, 247, 0.15);
+            background: rgba(79, 195, 247, 0.04);
+        }
+
+        h2 {
+            margin-top: 0;
+            font-size: 1.25rem;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        h2::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--accent);
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        p {
+            line-height: 1.7;
+            font-size: 0.9rem;
+            opacity: 0.7;
+            margin-bottom: 25px;
+            flex-grow: 1;
+        }
+
+        .tag {
+            font-size: 0.7rem;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            display: inline-block;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn {
+            background: var(--accent);
+            color: #000;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+            transform: scale(1.02);
+        }
+
+        .test-group {
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .test-trigger {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            padding: 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .test-trigger:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--accent);
+        }
+
+        .visualizer {
+            height: 120px;
+            width: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            margin: 40px 0;
+            border-radius: 16px;
+            display: flex;
+            align-items: flex-end;
+            padding: 15px;
+            gap: 3px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .bar {
+            flex: 1;
+            background: linear-gradient(to top, #2196f3, #4fc3f7);
+            height: 2px;
+            border-radius: 2px;
+            transition: height 0.05s ease;
+        }
+
+        .master-panel {
+            background: var(--card-bg);
+            padding: 25px 40px;
+            border-radius: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(20px);
+        }
+
+        #status {
+            font-size: 0.9rem;
+            opacity: 0.6;
+        }
+
+        .hint {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.8rem;
+            opacity: 0.4;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>深海音效进化实验室</h1>
+        <p class="subtitle">针对「方案 A：生物有机」的垂直专项研究</p>
+
+        <div class="grid">
+            <!-- 方案 A-1 -->
+            <div id="cardA" class="card">
+                <span class="tag">真实物理</span>
+                <h2>A-1: 近场流体力学</h2>
+                <p>模拟水分子被大型鱼类推开时的动态位移。交互音效增加了低频的“空腔冲击”，具有极强的实体感和音量感。</p>
+                <button class="btn" onclick="toggleMode('A')">激活此环境</button>
+                <div class="test-group">
+                    <button class="test-trigger" onclick="playTrigger('A', 'move')">⚡ 强力拨水</button>
+                    <button class="test-trigger" onclick="playTrigger('A', 'shock')">🌀 湍流爆发</button>
+                </div>
+            </div>
+
+            <!-- 方案 A-2 -->
+            <div id="cardB" class="card">
+                <span class="tag">感官共鸣</span>
+                <h2>A-2: 频率响应修正</h2>
+                <p>重点修复“听不到”的问题。通过多级频率堆叠，在保留深海闷响感的同时，增强中频段的穿透力，模拟鳞片摩擦产生的瞬态声。</p>
+                <button class="btn" onclick="toggleMode('B')">激活此环境</button>
+                <div class="test-group">
+                    <button class="test-trigger" onclick="playTrigger('B', 'move')">🔊 能量游动</button>
+                    <button class="test-trigger" onclick="playTrigger('B', 'shock')">💥 物理聚散</button>
+                </div>
+            </div>
+
+            <!-- 方案 A-3 -->
+            <div id="cardC" class="card">
+                <span class="tag">空间声学</span>
+                <h2>A-3: 深层水体共鸣</h2>
+                <p>加入极短的延迟网络，模拟声音在无穷水域中的回响。交互声具有“尾音”，能清晰感受到声音在水下的空间延伸。</p>
+                <button class="btn" onclick="toggleMode('C')">激活此环境</button>
+                <div class="test-group">
+                    <button class="test-trigger" onclick="playTrigger('C', 'move')">🌊 远端残响</button>
+                    <button class="test-trigger" onclick="playTrigger('C', 'shock')">🌋 深渊脉冲</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="visualizer" id="viz"></div>
+
+        <div class="master-panel">
+            <div id="status">系统静默中... 请开启主开关并选择实验方案</div>
+            <button class="btn" onclick="toggleMaster()" style="min-width: 160px;">音频引擎: <span
+                    id="masterStatus">OFF</span></button>
+        </div>
+
+        <p class="hint">按 ⚡/🔊 按钮测试移动音效，已显著增强了物理撞击感和音量。</p>
+    </div>
+
+    <script>
+        let audioCtx;
+        let masterGain;
+        let currentMode = null;
+        let analyzer;
+
+        const components = {
+            ambient: null,
+            sub: null,
+            pinkBuffer: null,
+            brownBuffer: null
+        };
+
+        function initAudio() {
+            if (audioCtx) return;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = 0;
+            masterGain.connect(audioCtx.destination);
+
+            analyzer = audioCtx.createAnalyser();
+            analyzer.fftSize = 64;
+            masterGain.connect(analyzer);
+
+            const bufferSize = 2 * audioCtx.sampleRate;
+
+            // 粉红噪声 (柔和)
+            components.pinkBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const pOut = components.pinkBuffer.getChannelData(0);
+            let b0, b1, b2, b3, b4, b5, b6;
+            b0 = b1 = b2 = b3 = b4 = b5 = b6 = 0.0;
+            for (let i = 0; i < bufferSize; i++) {
+                const white = Math.random() * 2 - 1;
+                b0 = 0.99886 * b0 + white * 0.0555179;
+                b1 = 0.99332 * b1 + white * 0.0750759;
+                b2 = 0.96900 * b2 + white * 0.1538520;
+                b3 = 0.86650 * b3 + white * 0.3104856;
+                b4 = 0.55000 * b4 + white * 0.5329522;
+                b5 = -0.7616 * b5 - white * 0.0168980;
+                pOut[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+                pOut[i] *= 0.11;
+                b6 = white * 0.115926;
+            }
+
+            // 棕色噪声 (深沉)
+            components.brownBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const brOut = components.brownBuffer.getChannelData(0);
+            let lastOut = 0.0;
+            for (let i = 0; i < bufferSize; i++) {
+                const white = Math.random() * 2 - 1;
+                const out = (lastOut + (0.02 * white)) / 1.02;
+                brOut[i] = out * 3.5;
+                lastOut = out;
+            }
+
+            createVisualizer();
+            updateViz();
+        }
+
+        function toggleMaster() {
+            initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const isOn = masterGain.gain.value > 0;
+            if (isOn) {
+                masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+                document.getElementById('masterStatus').innerText = 'OFF';
+            } else {
+                masterGain.gain.setTargetAtTime(0.8, audioCtx.currentTime, 0.2);
+                document.getElementById('masterStatus').innerText = 'ON';
+                if (!currentMode) toggleMode('A');
+            }
+        }
+
+        function toggleMode(mode) {
+            initAudio();
+            if (currentMode === mode) return;
+
+            document.querySelectorAll('.card').forEach(c => c.classList.remove('active'));
+            document.getElementById('card' + (mode === 'A' ? 'A' : mode === 'B' ? 'B' : 'C')).classList.add('active');
+            document.getElementById('status').innerText = '实验模式激活: ' + (mode === 'A' ? 'A-1' : mode === 'B' ? 'A-2' : 'A-3');
+
+            currentMode = mode;
+            stopAmbient();
+            startAmbient(mode);
+        }
+
+        function stopAmbient() {
+            if (components.ambient) {
+                const g = components.ambientGain;
+                g.gain.setTargetAtTime(0, audioCtx.currentTime, 0.5);
+                const old = components.ambient;
+                setTimeout(() => old.stop(), 600);
+            }
+            if (components.sub) {
+                components.sub.stop();
+            }
+        }
+
+        function startAmbient(mode) {
+            const t = audioCtx.currentTime;
+            const src = audioCtx.createBufferSource();
+            src.buffer = mode === 'C' ? components.brownBuffer : components.pinkBuffer;
+            src.loop = true;
+
+            const filter = audioCtx.createBiquadFilter();
+            const gain = audioCtx.createGain();
+            gain.gain.value = 0;
+
+            if (mode === 'A') {
+                filter.type = 'lowpass'; filter.frequency.value = 350;
+                gain.gain.setTargetAtTime(0.35, t, 0.5);
+            } else if (mode === 'B') {
+                filter.type = 'bandpass'; filter.frequency.value = 600; filter.Q.value = 0.5;
+                gain.gain.setTargetAtTime(0.25, t, 0.6);
+            } else {
+                filter.type = 'lowpass'; filter.frequency.value = 180;
+                gain.gain.setTargetAtTime(0.45, t, 0.3);
+            }
+
+            src.connect(filter); filter.connect(gain); gain.connect(masterGain);
+            src.start();
+            components.ambient = src;
+            components.ambientGain = gain;
+
+            const sub = audioCtx.createOscillator();
+            sub.frequency.value = mode === 'C' ? 32 : 38;
+            const subG = audioCtx.createGain();
+            subG.gain.value = 0.04;
+            sub.connect(subG); subG.connect(masterGain);
+            sub.start();
+            components.sub = sub;
+        }
+
+        function playTrigger(mode, type) {
+            initAudio();
+            const t = audioCtx.currentTime;
+
+            if (type === 'move') {
+                // 重点增强：组合多层音浪，确保听得清
+
+                // 1. 次低频位移 (Displacement) - 100Hz 以下的实体感
+                const body = audioCtx.createOscillator();
+                body.frequency.setValueAtTime(120, t);
+                body.frequency.exponentialRampToValueAtTime(30, t + 0.2);
+                const bg = audioCtx.createGain();
+                bg.gain.setValueAtTime(0.5, t);
+                bg.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+                body.connect(bg); bg.connect(masterGain);
+                body.start(); body.stop(t + 0.3);
+
+                // 2. 湍流噪声 (Turbulence) - 中频穿透力
+                const turb = audioCtx.createBufferSource();
+                turb.buffer = components.pinkBuffer;
+                const tf = audioCtx.createBiquadFilter();
+                tf.type = 'bandpass';
+                tf.frequency.setValueAtTime(800, t);
+                tf.frequency.exponentialRampToValueAtTime(150, t + 0.25);
+                tf.Q.value = 1.5;
+                const tg = audioCtx.createGain();
+                tg.gain.setValueAtTime(0.4, t);
+                tg.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+                turb.connect(tf); tf.connect(tg); tg.connect(masterGain);
+                turb.start(); turb.stop(t + 0.4);
+
+                // 3. 方案 A-3 特有的空灵混响
+                if (mode === 'C') {
+                    const rev = audioCtx.createConvolver ? null : audioCtx.createDelay(0.1);
+                    if (rev) {
+                        rev.delayTime.value = 0.04;
+                        const rg = audioCtx.createGain();
+                        rg.gain.value = 0.15;
+                        bg.connect(rev); rev.connect(rg); rg.connect(masterGain);
+                    }
+                }
+            } else {
+                // 惊吓爆发
+                const dur = mode === 'C' ? 0.8 : 0.4;
+                const osc = audioCtx.createOscillator();
+                osc.type = mode === 'A' ? 'triangle' : 'sine';
+                osc.frequency.setValueAtTime(mode === 'B' ? 400 : 150, t);
+                osc.frequency.exponentialRampToValueAtTime(20, t + dur);
+                const g = audioCtx.createGain();
+                g.gain.setValueAtTime(0.7, t);
+                g.gain.exponentialRampToValueAtTime(0.001, t + dur + 0.1);
+                osc.connect(g); g.connect(masterGain);
+                osc.start(); osc.stop(t + dur + 0.2);
+
+                // 伴随气泡噪声
+                for (let i = 0; i < 10; i++) {
+                    const mt = t + Math.random() * 0.1;
+                    const b = audioCtx.createOscillator();
+                    b.frequency.setValueAtTime(1000 + Math.random() * 2000, mt);
+                    const bg = audioCtx.createGain();
+                    bg.gain.setValueAtTime(0.05, mt);
+                    bg.gain.exponentialRampToValueAtTime(0.001, mt + 0.05);
+                    b.connect(bg); bg.connect(masterGain);
+                    b.start(mt); b.stop(mt + 0.1);
+                }
+            }
+        }
+
+        function createVisualizer() {
+            const viz = document.getElementById('viz');
+            viz.innerHTML = '';
+            for (let i = 0; i < 32; i++) {
+                const bar = document.createElement('div');
+                bar.className = 'bar';
+                viz.appendChild(bar);
+            }
+        }
+
+        function updateViz() {
+            if (!analyzer) return;
+            const data = new Uint8Array(analyzer.frequencyBinCount);
+            analyzer.getByteFrequencyData(data);
+            const bars = document.querySelectorAll('.bar');
+            bars.forEach((bar, i) => {
+                const h = (data[i] / 255) * 100;
+                bar.style.height = Math.max(2, h) + '%';
+            });
+            requestAnimationFrame(updateViz);
+        }
+    </script>
+</body>
+
+</html>

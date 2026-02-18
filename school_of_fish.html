@@ -7,6 +7,9 @@
   <link rel="icon"
     href="data:image/x-icon;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQEAAAAMBx18grAAAAAnRSTlMAAHaTzTgAAAAKSURBVAjXY2AAAwAAfAABpf6Y4QAAAABJRU5ErkJggg==">
   <title>Deep Ocean School — Enhanced</title>
+  <!-- Cloudflare Web Analytics -->
+  <script defer src='https://static.cloudflareinsights.com/beacon.min.js'
+    data-cf-beacon='{"token": "a8096f2c92214ab9bed2e116de52a962"}'></script><!-- End Cloudflare Web Analytics -->
   <style>
     html,
     body {
@@ -15,7 +18,9 @@
       overflow: hidden;
       background: #040a12;
       cursor: default;
-      user-select: none
+      user-select: none;
+      touch-action: none;
+      /* Prevents scroll, pinch-zoom, and other browser gestures */
     }
 
     canvas {
@@ -251,6 +256,11 @@
         }
       }, true);
 
+      // --- Block Body Scroll on Mobile ---
+      window.addEventListener('touchmove', (e) => {
+        if (e.cancelable) e.preventDefault();
+      }, { passive: false });
+
       const canvas = document.getElementById('c');
       const ctx = canvas.getContext('2d', { alpha: false });
 
@@ -419,7 +429,8 @@
 
         // --- Double Click Detection for Flash Expansion ---
         if (now - lastClickT < 400) {
-
+          spawnFirework(cx, cy);
+          spawnCritter();
           triggerFlashExpansion(cx, cy);
           lastClickT = 0; // reset
           return;
@@ -437,6 +448,18 @@
           if (c.collected) continue;
           if (Math.hypot(cx - c.x, cy - c.y) < 36) { collectItem(c); return; }
         }
+        // Hit-test critters (interactive layer at the bottom)
+        for (let i = critters.length - 1; i >= 0; i--) {
+          const c = critters[i];
+          if (c.scared) continue;
+          if (Math.hypot(cx - c.x, cy - c.y) < 80 * c.scale) {
+            c.scared = true;
+            c.speed *= 5; // Rapid flee
+            if (soundOn && audio) audio.bubbleTick(0.8);
+            return;
+          }
+        }
+
         // Hit-test fish
         let hitFish = null, hitDist = Infinity;
         for (const f of fish) {
@@ -2151,59 +2174,255 @@
       }
 
       // ============================================================
+      // FIREWORKS (Double-click effect)
+      // ============================================================
+      const fireworks = [];
+
+      function spawnFirework(x, y) {
+        const count = 40 + Math.floor(Math.random() * 20);
+        const hueBase = Math.random() * 360;
+        for (let i = 0; i < count; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = rand(2, 6);
+          fireworks.push({
+            x: x,
+            y: y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            r: rand(2, 4),
+            life: 0,
+            maxLife: rand(1000, 2000),
+            color: `hsla(${hueBase + rand(-20, 20)}, 90%, 70%, 1)`,
+            sparkle: Math.random() > 0.5
+          });
+        }
+      }
+
+      function drawFireworks(t, dt) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        for (let i = fireworks.length - 1; i >= 0; i--) {
+          const p = fireworks[i];
+          p.life += dt;
+
+          // Update physics
+          p.vx *= 0.97;
+          p.vy *= 0.97;
+          p.vy += 0.05; // gravity
+          p.x += p.vx;
+          p.y += p.vy;
+
+          const progress = p.life / p.maxLife;
+          const alpha = 1 - progress;
+          const size = p.r * (1 - progress * 0.5);
+
+          if (p.sparkle && Math.random() > 0.8) {
+            ctx.fillStyle = '#fff';
+            ctx.globalAlpha = alpha;
+          } else {
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = alpha * 0.8;
+          }
+
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+          ctx.fill();
+
+          if (p.life >= p.maxLife) {
+            fireworks.splice(i, 1);
+          }
+        }
+        ctx.restore();
+      }
+
+      // ============================================================
+      // CRITTER SYSTEM (Cute animal double-click effect)
+      // ============================================================
+      const critters = [];
+
+      function spawnCritter() {
+        const side = Math.random() < 0.5 ? -1 : 1;
+        const types = ['pony', 'cat', 'rabbit', 'pig'];
+        const type = types[Math.floor(Math.random() * types.length)];
+        const h = Math.random() * 360;
+        const s = rand(50, 90);
+        const l = rand(40, 70);
+
+        critters.push({
+          type: type,
+          x: side < 0 ? -150 : W + 150,
+          y: H - rand(40, 100),
+          direction: -side,
+          speed: rand(0.7, 1.4),
+          scale: rand(0.22, 0.33),
+          phase: 0,
+          tailPhase: Math.random() * Math.PI * 2,
+          color: `hsl(${h}, ${s}%, ${l}%)`,
+          muzzleColor: `hsl(${h}, ${s - 20}%, ${l + 15}%)`,
+          detailColor: `hsl(${h}, ${s - 10}%, ${l - 20}%)`,
+          eyeSize: rand(6, 9),
+          variation: Math.random(),
+          scared: false
+        });
+      }
+
+      function drawCritter(ctx, c, t) {
+        ctx.save();
+        ctx.translate(c.x, c.y);
+        ctx.scale(c.direction * c.scale, c.scale);
+        const bob = Math.abs(Math.cos(c.phase * 0.1)) * 6;
+        const tailWag = Math.sin(t * 0.005 + c.tailPhase) * 0.5;
+
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.beginPath(); ctx.ellipse(0, 75, 80, 20, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.translate(0, -bob);
+
+        const drawCommonHead = (eyeX, eyeY) => {
+          ctx.fillStyle = '#fff';
+          ctx.beginPath(); ctx.arc(eyeX, eyeY, c.eyeSize, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#000';
+          ctx.beginPath(); ctx.arc(eyeX + c.direction * 1.5, eyeY, c.eyeSize * 0.6, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.beginPath(); ctx.arc(eyeX + c.direction * 2, eyeY - 2, 2, 0, Math.PI * 2); ctx.fill();
+        };
+
+        if (c.type === 'pony') {
+          const drawLeg = (ox, phase) => {
+            const la = Math.sin(c.phase * 0.1 + phase) * 0.6;
+            ctx.save(); ctx.translate(ox, 40); ctx.rotate(la);
+            ctx.fillStyle = c.color; ctx.fillRect(-12, 0, 24, 45);
+            ctx.fillStyle = '#332211'; ctx.roundRect(-13, 37, 26, 15, [2, 2, 5, 5]); ctx.fill();
+            ctx.restore();
+          };
+          drawLeg(-45, Math.PI); drawLeg(15, 0);
+          ctx.fillStyle = c.color; ctx.beginPath(); ctx.ellipse(0, 0, 95, 75, 0, 0, Math.PI * 2); ctx.fill();
+          drawLeg(-25, Math.PI * 0.5); drawLeg(45, Math.PI * 1.5);
+          ctx.save(); ctx.translate(-85, 0); ctx.rotate(tailWag - 0.3);
+          ctx.fillStyle = c.detailColor; ctx.beginPath(); ctx.moveTo(0, 0); ctx.bezierCurveTo(-50, -40, -100, 20, -70, 70); ctx.bezierCurveTo(-40, 60, -20, 30, 0, 15); ctx.fill(); ctx.restore();
+          ctx.save(); ctx.translate(70, -40); ctx.rotate(-0.5 + Math.sin(c.phase * 0.05) * 0.1);
+          ctx.fillStyle = c.detailColor; ctx.beginPath(); ctx.moveTo(-10, -30); ctx.bezierCurveTo(-40, -40, -60, 40, -40, 80); ctx.lineTo(0, 40); ctx.fill();
+          ctx.fillStyle = c.color; ctx.beginPath(); ctx.ellipse(0, 0, 40, 55, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.translate(15, -45); ctx.fillStyle = c.detailColor; ctx.beginPath(); ctx.ellipse(-10, -40, 35, 20, -0.2, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = c.color; ctx.beginPath(); ctx.ellipse(15, 0, 55, 45, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = c.muzzleColor; ctx.beginPath(); ctx.ellipse(45, 10, 30, 28, 0, 0, Math.PI * 2); ctx.fill();
+          drawCommonHead(20, -15); ctx.restore();
+        } else if (c.type === 'cat') {
+          const drawLeg = (ox, phase) => {
+            const la = Math.sin(c.phase * 0.1 + phase) * 0.6;
+            ctx.save(); ctx.translate(ox, 40); ctx.rotate(la);
+            ctx.fillStyle = c.color; ctx.fillRect(-10, 0, 20, 45); ctx.restore();
+          };
+          drawLeg(-40, Math.PI); drawLeg(10, 0);
+          ctx.fillStyle = c.color; ctx.beginPath(); ctx.ellipse(0, 5, 85, 65, 0, 0, Math.PI * 2); ctx.fill();
+          drawLeg(-20, Math.PI * 0.5); drawLeg(35, Math.PI * 1.5);
+          ctx.save(); ctx.translate(-75, 10); ctx.rotate(tailWag);
+          ctx.lineWidth = 15; ctx.strokeStyle = c.color; ctx.lineCap = 'round';
+          ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(-40, -20, -30, -60); ctx.stroke(); ctx.restore();
+          ctx.save(); ctx.translate(65, -35); ctx.fillStyle = c.color;
+          ctx.beginPath(); ctx.ellipse(0, 0, 55, 50, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.moveTo(-35, -30); ctx.lineTo(-45, -60); ctx.lineTo(-15, -45); ctx.fill();
+          ctx.beginPath(); ctx.moveTo(15, -45); ctx.lineTo(35, -60); ctx.lineTo(35, -25); ctx.fill();
+          drawCommonHead(15, -10);
+          ctx.fillStyle = '#ff9999'; ctx.beginPath(); ctx.moveTo(40, 5); ctx.lineTo(35, 12); ctx.lineTo(45, 12); ctx.fill(); ctx.restore();
+        } else if (c.type === 'rabbit') {
+          const drawLeg = (ox, phase) => {
+            const la = Math.sin(c.phase * 0.1 + phase) * 0.5;
+            ctx.save();
+            ctx.translate(ox, 40); ctx.rotate(la);
+            ctx.fillStyle = c.color; ctx.beginPath(); ctx.ellipse(0, 0, 15, 25, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+          };
+          drawLeg(-35, Math.PI); drawLeg(15, 0);
+          ctx.fillStyle = c.color; ctx.beginPath(); ctx.ellipse(0, 10, 80, 70, 0, 0, Math.PI * 2); ctx.fill();
+          drawLeg(-15, Math.PI * 0.5); drawLeg(35, Math.PI * 1.5);
+          ctx.beginPath(); ctx.arc(-75, 15, 15, 0, Math.PI * 2); ctx.fill();
+          ctx.save(); ctx.translate(60, -30); ctx.beginPath(); ctx.ellipse(0, 0, 50, 45, 0, 0, Math.PI * 2); ctx.fill();
+          const drawEar = (ox) => {
+            ctx.save(); ctx.translate(ox, -35); ctx.rotate(Math.sin(t * 0.002) * 0.1);
+            ctx.beginPath(); ctx.ellipse(0, -30, 12, 45, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.beginPath(); ctx.ellipse(0, -30, 6, 35, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore(); ctx.fillStyle = c.color;
+          };
+          drawEar(-15); drawEar(10); drawCommonHead(15, -5); ctx.restore();
+        } else if (c.type === 'pig') {
+          const drawLeg = (ox, phase) => {
+            const la = Math.sin(c.phase * 0.1 + phase) * 0.6;
+            ctx.save(); ctx.translate(ox, 45); ctx.rotate(la);
+            ctx.fillStyle = c.color; ctx.fillRect(-10, 0, 20, 35); ctx.restore();
+          };
+          drawLeg(-45, Math.PI); drawLeg(15, 0);
+          ctx.fillStyle = c.color; ctx.beginPath(); ctx.ellipse(0, 10, 95, 80, 0, 0, Math.PI * 2); ctx.fill();
+          drawLeg(-20, Math.PI * 0.5); drawLeg(40, Math.PI * 1.5);
+          ctx.save(); ctx.translate(-95, 10); ctx.rotate(tailWag);
+          ctx.strokeStyle = c.detailColor; ctx.lineWidth = 5; ctx.lineCap = 'round';
+          ctx.beginPath(); ctx.moveTo(0, 0); ctx.bezierCurveTo(-20, -10, -10, -30, -30, -20); ctx.stroke(); ctx.restore();
+          ctx.save(); ctx.translate(65, -25); ctx.fillStyle = c.color;
+          ctx.beginPath(); ctx.ellipse(0, 0, 55, 50, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = c.muzzleColor; ctx.beginPath(); ctx.ellipse(45, 10, 28, 22, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.arc(40, 10, 4, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(52, 10, 4, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = c.color; ctx.beginPath(); ctx.moveTo(-20, -40); ctx.lineTo(-35, -60); ctx.lineTo(-5, -50); ctx.fill();
+          ctx.beginPath(); ctx.moveTo(20, -45); ctx.lineTo(35, -60); ctx.lineTo(40, -35); ctx.fill();
+          drawCommonHead(10, -10); ctx.restore();
+        }
+        ctx.restore();
+      }
+
+      function updateAndDrawCritters(t, dt) {
+        for (let i = critters.length - 1; i >= 0; i--) {
+          const c = critters[i];
+          c.x += c.direction * c.speed * dt * 0.1;
+          c.phase += c.speed * dt * (c.scared ? 0.25 : 0.15); // Faster animation when scared
+
+          if (c.scared) {
+            ctx.save();
+            ctx.translate(Math.sin(t * 0.08) * 3, 0); // Scared jitter
+            drawCritter(ctx, c, t);
+            ctx.restore();
+          } else {
+            drawCritter(ctx, c, t);
+          }
+
+          if (c.direction > 0 && c.x > W + 200) critters.splice(i, 1);
+          else if (c.direction < 0 && c.x < -200) critters.splice(i, 1);
+        }
+      }
+
+      // ============================================================
       // MICRO-SURPRISE SYSTEM (Direction D: High-Frequency Events)
       // ============================================================
       const microSurprises = { timer: rand(2000, 5000) };
 
       function spawnMicroSurprise(t) {
-        // Weighted random: bubbleBurst, fishFry, starDrop, gemDrop, colorFish
         const weights = [25, 25, 20, 20, 10];
         let r = Math.random() * 100, chosen = 0;
         for (let i = 0; i < weights.length; i++) { r -= weights[i]; if (r <= 0) { chosen = i; break; } }
-
-        if (chosen === 0) { // bubbleBurst — random location burst
-          spawnBubbleCluster(rand(W * 0.1, W * 0.9), rand(H * 0.2, H * 0.9));
-        } else if (chosen === 1) { // fishFry — swarm dashes across screen
+        if (chosen === 0) { spawnBubbleCluster(rand(W * 0.1, W * 0.9), rand(H * 0.2, H * 0.9)); }
+        else if (chosen === 1) {
           const side = Math.random() < 0.5 ? -1 : 1;
           fishFryGroups.push({
-            x: side < 0 ? -80 : W + 80,
-            y: rand(H * 0.15, H * 0.85),
-            direction: -side,
-            speed: rand(2.2, 3.5),
-            count: randInt(6, 14),
-            phase: rand(0, Math.PI * 2),
-            life: 0,
-            maxLife: rand(3000, 5000)
+            x: side < 0 ? -80 : W + 80, y: rand(H * 0.15, H * 0.85), direction: -side,
+            speed: rand(2.2, 3.5), count: randInt(6, 14), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(3000, 5000)
           });
-        } else if (chosen === 2) { // starDrop — collectible star appears (DOUBLED)
+        } else if (chosen === 2) {
           for (let i = 0; i < 2; i++) {
             collectibles.push({
-              type: 'star',
-              x: rand(W * 0.12, W * 0.88), y: rand(H * 0.08, H * 0.42),
-              vx: rand(-0.25, 0.25), vy: rand(0.15, 0.35),
-              phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(6000, 10000),
-              collected: false, collectAnim: 0
+              type: 'star', x: rand(W * 0.12, W * 0.88), y: rand(H * 0.08, H * 0.42),
+              vx: rand(-0.25, 0.25), vy: rand(0.15, 0.35), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(6000, 10000), collected: false, collectAnim: 0
             });
           }
-        } else if (chosen === 3) { // gemDrop — collectible gem drifts (DOUBLED)
+        } else if (chosen === 3) {
           for (let i = 0; i < 2; i++) {
             collectibles.push({
-              type: 'gem',
-              x: rand(W * 0.12, W * 0.88), y: rand(-45, H * 0.15),
-              vx: rand(-0.2, 0.2), vy: rand(0.2, 0.4),
-              phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(7000, 12000),
-              collected: false, collectAnim: 0
+              type: 'gem', x: rand(W * 0.12, W * 0.88), y: rand(-45, H * 0.15),
+              vx: rand(-0.2, 0.2), vy: rand(0.2, 0.4), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(7000, 12000), collected: false, collectAnim: 0
             });
           }
-        } else { // colorFish — one fish bursts out colorfully then returns
+        } else {
           if (fish.length > 0) {
             const f = fish[Math.floor(Math.random() * fish.length)];
             if (!f.response) {
               const angle = rand(0, Math.PI * 2);
               f.response = { type: 'colorBurst', startTime: performance.now(), duration: 2300 };
-              f.vx += Math.cos(angle) * 10;
-              f.vy += Math.sin(angle) * 10;
-              f.heading = Math.atan2(f.vy, f.vx); // snap heading to burst direction
+              f.vx += Math.cos(angle) * 10; f.vy += Math.sin(angle) * 10; f.heading = Math.atan2(f.vy, f.vx);
             }
           }
         }
@@ -3851,6 +4070,8 @@
         // Simulation
         step(dt, t);
         drawBubbles(t, dt);
+        drawFireworks(t, dt);
+        updateAndDrawCritters(t, dt);
 
         // Fish rendered by depth layer: background -> midground -> foreground
         // Then within each layer: small -> large
