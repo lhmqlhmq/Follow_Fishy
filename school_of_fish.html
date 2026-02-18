@@ -10,6 +10,31 @@
   <!-- Cloudflare Web Analytics -->
   <script defer src='https://static.cloudflareinsights.com/beacon.min.js'
     data-cf-beacon='{"token": "a8096f2c92214ab9bed2e116de52a962"}'></script><!-- End Cloudflare Web Analytics -->
+  <script>
+    (function () {
+      // --- External Error Interceptor (Head Version) ---
+      const handleExternalError = (e) => {
+        const file = e.filename || (e.reason && e.reason.stack) || '';
+        const msg = (e.message || e.reason || '').toString();
+
+        if (file.includes('site-blocker') || file.includes('extension') || msg.includes('site-blocker')) {
+          console.group("%c ⚡ 外部插件错误已拦截 (Extension Error Blocked) %c", "background: #f4d03f; color: #000; padding: 4px; border-radius: 4px;", "");
+          console.warn("已静默来自浏览器插件（如 Site Blocker）的错误。");
+          console.groupEnd();
+
+          const t = document.getElementById('extError');
+          if (t) {
+            t.style.display = 'block';
+            setTimeout(() => t.style.display = 'none', 6000);
+          }
+          if (e.preventDefault) e.preventDefault();
+          return true;
+        }
+      };
+      window.addEventListener('error', handleExternalError, true);
+      window.addEventListener('unhandledrejection', handleExternalError, true);
+    })();
+  </script>
   <style>
     html,
     body {
@@ -237,26 +262,6 @@
 
   <script>
     (() => {
-      // --- External Error Interceptor ---
-      // Distinguishes project errors from browser extension errors (like Site Blocker)
-      window.addEventListener('error', (e) => {
-        const file = e.filename || '';
-        if (file.includes('site-blocker') || file.includes('extension')) {
-          console.group("%c ⚡ 外部插件错误检测 (External Extension Error) %c", "background: #f4d03f; color: #000; padding: 4px; border-radius: 4px;", "");
-          console.warn("检测到来自浏览器插件（如 Site Blocker）的错误。");
-          console.warn("该错误不属于鱼群模拟程序。请尝试在‘无痕模式’下运行以确认。");
-          console.groupEnd();
-
-          // Show UI toast
-          const t = document.getElementById('extError');
-          if (t) {
-            t.style.display = 'block';
-            setTimeout(() => t.style.display = 'none', 6000);
-          }
-          // Silence the console error
-          if (e.preventDefault) e.preventDefault();
-        }
-      }, true);
 
       // --- Block Body Scroll on Mobile ---
       window.addEventListener('touchmove', (e) => {
@@ -4115,7 +4120,7 @@
       // ============================================================
       // BOOT
       // ============================================================
-      console.log("%c Follow Fishy v2.3 - Critter Debug Patch %c", "background: #2a2; color: #fff; padding: 4px; border-radius: 4px;", "");
+      console.log("%c Follow Fishy v2.3.1 - Refined Error Suppression %c", "background: #2a2; color: #fff; padding: 4px; border-radius: 4px;", "");
       resize();
       initSnow();
       initGodRays();
