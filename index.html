@@ -315,27 +315,50 @@
 
 
       const seagrass = [];
+      // 三种水草类型：高大海藻、中等标准、矮小细草
+      const SEAGRASS_TYPES = [
+        { name: 'kelp', lenMin: 140, lenMax: 280, widthMin: 5, widthMax: 8, hueRange: [125, 155], satMin: 28, satMax: 45, litMin: 22, litMax: 35, weight: 25 },
+        { name: 'standard', lenMin: 70, lenMax: 160, widthMin: 3, widthMax: 5, hueRange: [135, 165], satMin: 22, satMax: 40, litMin: 24, litMax: 36, weight: 40 },
+        { name: 'grass', lenMin: 25, lenMax: 80, widthMin: 1.5, widthMax: 3, hueRange: [145, 175], satMin: 30, satMax: 50, litMin: 26, litMax: 38, weight: 35 }
+      ];
+
+      function pickSeagrassType() {
+        const total = SEAGRASS_TYPES.reduce((s, t) => s + t.weight, 0);
+        let r = Math.random() * total;
+        for (const t of SEAGRASS_TYPES) { r -= t.weight; if (r <= 0) return t; }
+        return SEAGRASS_TYPES[1];
+      }
+
       function initSeagrass() {
         seagrass.length = 0;
-        const count = Math.floor(W / 25);
+        // 3x 密度
+        const count = Math.floor(W / 8);
         for (let i = 0; i < count; i++) {
+          const type = pickSeagrassType();
+          const hue = rand(type.hueRange[0], type.hueRange[1]);
+          const sat = rand(type.satMin, type.satMax);
+          const lit = rand(type.litMin, type.litMax);
           seagrass.push({
             x: rand(0, W),
-            y: H + 10,
-            len: rand(60, 160),
+            y: H + rand(0, 15),
+            len: rand(type.lenMin, type.lenMax),
+            width: rand(type.widthMin, type.widthMax),
             angle: 0,
             tipX: 0, tipY: 0,
             vx: 0,
             phase: rand(0, Math.PI * 2),
-            color: `hsla(${140 + rand(-15, 15)}, ${25 + rand(0, 15)}%, ${15 + rand(0, 10)}%, 1)`
+            swaySpeed: rand(0.0006, 0.0015),
+            swayAmp: rand(0.08, 0.22),
+            color: `hsla(${hue}, ${sat}%, ${lit}%, 1)`,
+            typeName: type.name
           });
         }
       }
 
       function updateSeagrass(dt, t) {
         for (const g of seagrass) {
-          // Natural sway
-          const sway = Math.sin(t * 0.001 + g.phase) * 0.15;
+          // Natural sway - each blade has its own rhythm
+          const sway = Math.sin(t * g.swaySpeed + g.phase) * g.swayAmp;
           // Return to center force
           g.vx += (-g.angle + sway) * 0.002 * dt;
           g.vx *= Math.pow(0.92, dt / 16);
@@ -348,10 +371,10 @@
       function drawSeagrass() {
         ctx.save();
         ctx.globalAlpha = world.lighting * 0.8;
+        ctx.lineCap = 'round';
         for (const g of seagrass) {
           ctx.strokeStyle = g.color;
-          ctx.lineWidth = 4;
-          ctx.lineCap = 'round';
+          ctx.lineWidth = g.width;
           ctx.beginPath();
           ctx.moveTo(g.x, g.y);
           ctx.quadraticCurveTo(g.x, g.y - g.len * 0.5, g.tipX, g.tipY);
@@ -588,15 +611,23 @@
       document.getElementById('cntMinus').onclick = () => { targetFishCount = clamp(targetFishCount - 150, 200, 2000); updateHud(); };
       document.getElementById('cntPlus').onclick = () => { targetFishCount = clamp(targetFishCount + 150, 200, 2000); updateHud(); };
 
-      // ---------- Hint auto-hide ----------
+      // ---------- Hint auto-hide (20秒后永久隐藏) ----------
       const hint = document.getElementById('hint');
       let hintTimer = null;
+      let hintPermanentlyHidden = false;
       function hintTimeoutArm() {
+        if (hintPermanentlyHidden) return;
         hint.classList.remove('off');
         if (hintTimer) clearTimeout(hintTimer);
         hintTimer = setTimeout(() => hint.classList.add('off'), 4500);
       }
       hintTimeoutArm();
+      // 20秒后永久隐藏提示文字
+      setTimeout(() => {
+        hintPermanentlyHidden = true;
+        hint.classList.add('off');
+        setTimeout(() => hint.style.display = 'none', 1000); // 等淡出动画完成后彻底移除
+      }, 20000);
 
       // ============================================================
       // MIGRATION SYSTEM - Natural schooling behavior
