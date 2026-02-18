@@ -10,23 +10,40 @@
   <!-- Cloudflare Web Analytics -->
   <script defer src='https://static.cloudflareinsights.com/beacon.min.js'
     data-cf-beacon='{"token": "a8096f2c92214ab9bed2e116de52a962"}'></script><!-- End Cloudflare Web Analytics -->
+
   <script>
     (function () {
+      // --- Console Error Proxy (Radical Cleanup) ---
+      const originalError = console.error;
+      console.error = function (...args) {
+        const msg = args.join(' ');
+        if (
+          msg.includes('cloudflareinsights.com') ||
+          msg.includes('beacon.min.js') ||
+          msg.includes('CORS') ||
+          msg.includes('rum')
+        ) {
+          // 静默拦截这些具体报错到折叠日志中
+          console.groupCollapsed("%c ⚡ 外部/统计报错已拦截 %c", "background: #777; color: #fff; padding: 2px 4px; border-radius: 4px;", "");
+          console.log("拦截详情:", ...args);
+          console.groupEnd();
+          return;
+        }
+        originalError.apply(console, args);
+      };
+
       // --- External Error Interceptor (Head Version) ---
       const handleExternalError = (e) => {
         const file = e.filename || (e.reason && e.reason.stack) || '';
         const msg = (e.message || e.reason || '').toString();
 
-        if (file.includes('site-blocker') || file.includes('extension') || msg.includes('site-blocker')) {
-          console.group("%c ⚡ 外部插件错误已拦截 (Extension Error Blocked) %c", "background: #f4d03f; color: #000; padding: 4px; border-radius: 4px;", "");
-          console.warn("已静默来自浏览器插件（如 Site Blocker）的错误。");
-          console.groupEnd();
-
-          const t = document.getElementById('extError');
-          if (t) {
-            t.style.display = 'block';
-            setTimeout(() => t.style.display = 'none', 6000);
-          }
+        if (
+          file.includes('site-blocker') ||
+          file.includes('extension') ||
+          file.includes('cloudflareinsights.com') ||
+          file.includes('beacon.min.js') ||
+          msg.includes('CORS')
+        ) {
           if (e.preventDefault) e.preventDefault();
           return true;
         }
@@ -54,14 +71,14 @@
 
     .hud {
       position: fixed;
-      top: 10px;
-      right: 10px;
-      left: 10px;
+      top: 12px;
+      right: 16px;
+      left: 16px;
       display: flex;
-      justify-content: space-between;
-      gap: 8px;
+      justify-content: center;
+      gap: 10px;
       align-items: center;
-      padding: 8px 12px;
+      padding: 8px 20px;
       border-radius: 12px;
       background: rgba(8, 18, 30, 0.45);
       border: 1px solid rgba(255, 255, 255, 0.10);
@@ -72,38 +89,153 @@
       letter-spacing: .2px;
       opacity: .95;
       z-index: 10;
+      flex-wrap: nowrap;
     }
 
     @media (min-width: 600px) {
       .hud {
-        left: auto;
         top: 12px;
-        right: 12px;
-        width: auto;
+        left: 16px;
+        right: 16px;
         font-size: 12px;
-        gap: 10px;
+        gap: 12px;
+        padding: 8px 24px;
       }
+    }
+
+    .hud .stats {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-right: auto;
+    }
+
+    .hud .stat-item {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .hud .stats-count {
+      font-weight: 800;
+      font-size: 13px;
+      min-width: 18px;
+      text-align: center;
+      transition: transform 0.15s ease;
+    }
+
+    .hud .stats-count.bounce {
+      animation: statBounce 0.35s ease;
+    }
+
+    @keyframes statBounce {
+      0% {
+        transform: scale(1);
+      }
+
+      30% {
+        transform: scale(1.55);
+        color: #fff;
+      }
+
+      60% {
+        transform: scale(0.9);
+      }
+
+      100% {
+        transform: scale(1);
+      }
+    }
+
+    .hud .controls-right {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-left: auto;
     }
 
     /* Mobile specific tight packing */
     @media (max-width: 599px) {
       .hud {
-        padding: 6px 8px;
+        padding: 5px 8px;
         gap: 4px;
+        top: 6px;
+        left: 6px;
+        right: 6px;
+        font-size: 10px;
       }
 
       .hud .grp {
-        gap: 4px;
+        gap: 3px;
+      }
+
+      .hud .stats {
+        gap: 5px;
+        margin-right: 6px;
+      }
+
+      .hud .stat-item {
+        font-size: 10px;
+        gap: 2px;
+      }
+
+      .hud .stats-count {
+        font-size: 10px;
+        min-width: 12px;
+      }
+
+      .hud .controls-right {
+        gap: 6px;
       }
 
       .hud .pill {
-        min-width: 46px;
-        padding: 3px 6px;
+        min-width: 40px;
+        padding: 2px 5px;
+        font-size: 10px;
       }
 
       .hud button {
-        width: 24px;
-        height: 20px;
+        width: 22px;
+        height: 18px;
+        font-size: 10px;
+      }
+
+      .hud .grp>span {
+        font-size: 9px !important;
+      }
+
+      #snd {
+        padding: 2px 5px;
+        font-size: 9px;
+      }
+    }
+
+    @media (max-width: 400px) {
+      .hud {
+        padding: 4px 6px;
+        gap: 3px;
+        font-size: 9px;
+      }
+
+      .hud .stats {
+        gap: 4px;
+        margin-right: 4px;
+      }
+
+      .hud .stat-item {
+        font-size: 9px;
+      }
+
+      .hud .pill {
+        min-width: 34px;
+        padding: 2px 4px;
+      }
+
+      .hud button {
+        width: 20px;
+        height: 16px;
       }
     }
 
@@ -240,19 +372,25 @@
   <canvas id="c"></canvas>
 
   <div class="hud">
-    <div class="grp">
-      <span style="opacity:.7;font-weight:800;">SPEED</span>
-      <button id="spdMinus" title="Speed down">−</button>
-      <div class="pill" id="spdVal">0.60×</div>
-      <button id="spdPlus" title="Speed up">+</button>
+    <div class="stats" id="collectStats">
+      <span class="stat-item" id="starStatItem">⭐<span class="stats-count" id="starCount">0</span></span>
+      <span class="stat-item" id="gemStatItem">💎<span class="stats-count" id="gemCount">0</span></span>
     </div>
-    <div class="grp">
-      <span style="opacity:.7;font-weight:800;">FISH</span>
-      <button id="cntMinus" title="Fewer fish">−</button>
-      <div class="pill" id="cntVal">800</div>
-      <button id="cntPlus" title="More fish">+</button>
+    <div class="controls-right">
+      <div class="grp">
+        <span style="opacity:.7;font-weight:800;">SPEED</span>
+        <button id="spdMinus" title="Speed down">−</button>
+        <div class="pill" id="spdVal">0.60×</div>
+        <button id="spdPlus" title="Speed up">+</button>
+      </div>
+      <div class="grp">
+        <span style="opacity:.7;font-weight:800;">FISH</span>
+        <button id="cntMinus" title="Fewer fish">−</button>
+        <div class="pill" id="cntVal">800</div>
+        <button id="cntPlus" title="More fish">+</button>
+      </div>
+      <button id="snd" title="Toggle sound (default off)">Sound</button>
     </div>
-    <button id="snd" title="Toggle sound (default off)">Sound</button>
   </div>
 
 
@@ -420,11 +558,8 @@
           pointOfInterest.y = pointer.y;
         }
 
-        // Re-calculate density if needed
-        const screenArea = (W * H) / (1920 * 1080);
-        const baseCount = 700;
-        targetFishCount = Math.floor(baseCount * Math.sqrt(screenArea + 0.5));
-        targetFishCount = clamp(targetFishCount, 400, 2000);
+        // Fixed fish count (user adjustable via HUD)
+        targetFishCount = 700;
         updateHud();
 
         initSpatial();
@@ -566,7 +701,8 @@
 
       function triggerFlashExpansion(cx, cy) {
         // Flash Expansion: Large-scale repulsion
-        const sr = Math.min(W, H) * 0.6;
+        // V2: 直径进一步降低 (至原版的 13%) -> 0.6 * 0.13 = 0.08
+        const sr = Math.min(W, H) * 0.08;
         for (const f of fish) {
           const dx = f.x - cx, dy = f.y - cy, d = Math.hypot(dx, dy);
           if (d < sr && d > 0.5) {
@@ -590,7 +726,7 @@
           x: cx, y: cy,
           dx: 0, dy: 0,
           speed: 0,
-          radius: Math.max(W, H) * 1.5, // Covers everything
+          radius: Math.max(W, H) * 0.2, // 视觉范围也同步缩小
           strength: 40.0, // Massive scatter force
           life: 0, maxLife: 1500,
           riseTime: 30, fadeTime: 1400,
@@ -611,12 +747,36 @@
       let SPEED = 1.2;
       let targetFishCount = 700;
 
+      // Collection stats
+      let collectedStars = 0;
+      let collectedGems = 0;
+      const starCountEl = document.getElementById('starCount');
+      const gemCountEl = document.getElementById('gemCount');
+      const starStatItemEl = document.getElementById('starStatItem');
+      const gemStatItemEl = document.getElementById('gemStatItem');
+
       const spdVal = document.getElementById('spdVal');
       const cntVal = document.getElementById('cntVal');
 
       function updateHud() {
         spdVal.textContent = SPEED.toFixed(2) + '×';
         cntVal.textContent = String(targetFishCount);
+      }
+
+      function bumpStatCount(type) {
+        if (type === 'star') {
+          collectedStars++;
+          starCountEl.textContent = String(collectedStars);
+          starCountEl.classList.remove('bounce');
+          void starCountEl.offsetWidth; // force reflow
+          starCountEl.classList.add('bounce');
+        } else {
+          collectedGems++;
+          gemCountEl.textContent = String(collectedGems);
+          gemCountEl.classList.remove('bounce');
+          void gemCountEl.offsetWidth;
+          gemCountEl.classList.add('bounce');
+        }
       }
 
       updateHud();
@@ -2046,7 +2206,7 @@
           gradient.addColorStop(0, 'rgba(210, 230, 245, 0.4)');
           gradient.addColorStop(0.3, 'rgba(195, 220, 240, 0.22)');
           gradient.addColorStop(0.7, 'rgba(180, 210, 235, 0.08)');
-          gradient.addColorStop(1, 'rgba(160, 195, 225, 0)');
+          gradient.addColorStop(1, 'rgba(160, 195, 220, 0)');
 
           ctx.fillStyle = gradient;
           ctx.beginPath();
@@ -2506,17 +2666,17 @@
             speed: rand(2.2, 3.5), count: randInt(6, 14), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(3000, 5000)
           });
         } else if (chosen === 2) {
-          for (let i = 0; i < 2; i++) {
+          for (let i = 0; i < 4; i++) {
             collectibles.push({
-              type: 'star', x: rand(W * 0.12, W * 0.88), y: rand(H * 0.08, H * 0.42),
-              vx: rand(-0.25, 0.25), vy: rand(0.15, 0.35), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(6000, 10000), collected: false, collectAnim: 0
+              type: 'star', x: rand(W * 0.08, W * 0.92), y: rand(H * 0.08, H * 0.50),
+              vx: rand(-0.25, 0.25), vy: rand(0.15, 0.35), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(8000, 14000), collected: false, collectAnim: 0
             });
           }
         } else if (chosen === 3) {
-          for (let i = 0; i < 2; i++) {
+          for (let i = 0; i < 4; i++) {
             collectibles.push({
-              type: 'gem', x: rand(W * 0.12, W * 0.88), y: rand(-45, H * 0.15),
-              vx: rand(-0.2, 0.2), vy: rand(0.2, 0.4), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(7000, 12000), collected: false, collectAnim: 0
+              type: 'gem', x: rand(W * 0.08, W * 0.92), y: rand(-45, H * 0.25),
+              vx: rand(-0.2, 0.2), vy: rand(0.2, 0.4), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(9000, 15000), collected: false, collectAnim: 0
             });
           }
         } else {
@@ -2531,18 +2691,174 @@
         }
       }
 
+      // Fly-to-HUD particle system
+      const flyToHudParticles = [];
+
+      function getHudTargetScreenPos(type) {
+        const el = type === 'star' ? starStatItemEl : gemStatItemEl;
+        const rect = el.getBoundingClientRect();
+        // Convert screen coords to world coords
+        return {
+          x: (rect.left + rect.width * 0.5) * WORLD_SCALE,
+          y: (rect.top + rect.height * 0.5) * WORLD_SCALE
+        };
+      }
+
+      function spawnFlyToHud(worldX, worldY, type) {
+        const target = getHudTargetScreenPos(type);
+        const trail = [];
+        flyToHudParticles.push({
+          type: type,
+          sx: worldX, sy: worldY, // start
+          tx: target.x, ty: target.y, // target
+          x: worldX, y: worldY, // current
+          progress: 0,
+          duration: 450, // ms to fly
+          trail: trail,
+          arrived: false
+        });
+      }
+
+      function updateFlyToHud(dt) {
+        for (let i = flyToHudParticles.length - 1; i >= 0; i--) {
+          const p = flyToHudParticles[i];
+          p.progress += dt / p.duration;
+          if (p.progress >= 1) {
+            p.progress = 1;
+            if (!p.arrived) {
+              p.arrived = true;
+              bumpStatCount(p.type);
+            }
+            // Keep briefly for trail fade
+            p.trail.length = 0;
+            flyToHudParticles.splice(i, 1);
+            continue;
+          }
+
+          // Recalculate target each frame (HUD might move)
+          const target = getHudTargetScreenPos(p.type);
+          p.tx = target.x; p.ty = target.y;
+
+          // easeInOut curve for smooth acceleration
+          const t = p.progress;
+          const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+          p.x = p.sx + (p.tx - p.sx) * ease;
+          p.y = p.sy + (p.ty - p.sy) * ease;
+
+          // Add trail particles
+          if (Math.random() < 0.8) {
+            p.trail.push({
+              x: p.x + (Math.random() - 0.5) * 6,
+              y: p.y + (Math.random() - 0.5) * 6,
+              life: 0,
+              maxLife: 300
+            });
+          }
+          // Cap trail length
+          if (p.trail.length > 20) p.trail.shift();
+
+          // Update trail
+          for (let j = p.trail.length - 1; j >= 0; j--) {
+            p.trail[j].life += dt;
+            if (p.trail[j].life >= p.trail[j].maxLife) p.trail.splice(j, 1);
+          }
+        }
+      }
+
+      function drawFlyToHud(t) {
+        for (const p of flyToHudParticles) {
+          const isStar = p.type === 'star';
+          const mainColor = isStar ? '255,234,82' : '140,208,255';
+          const glowColor = isStar ? 'rgba(255,234,82,' : 'rgba(140,208,255,';
+
+          // Draw trail
+          for (const tr of p.trail) {
+            const tp = 1 - tr.life / tr.maxLife;
+            ctx.save();
+            ctx.globalAlpha = tp * 0.6;
+            ctx.globalCompositeOperation = 'screen';
+            const r = 3 + tp * 4;
+            const g = ctx.createRadialGradient(tr.x, tr.y, 0, tr.x, tr.y, r);
+            g.addColorStop(0, glowColor + '0.8)');
+            g.addColorStop(1, glowColor + '0)');
+            ctx.fillStyle = g;
+            ctx.beginPath(); ctx.arc(tr.x, tr.y, r, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+          }
+
+          // Draw main flying item
+          const scale = 1 - p.progress * 0.5; // Shrink as it approaches
+          ctx.save();
+          ctx.globalAlpha = 1;
+          ctx.translate(p.x, p.y);
+          ctx.scale(scale, scale);
+
+          // Glow
+          ctx.globalCompositeOperation = 'screen';
+          const gg = ctx.createRadialGradient(0, 0, 0, 0, 0, 25);
+          gg.addColorStop(0, `rgba(${mainColor},0.5)`);
+          gg.addColorStop(1, `rgba(${mainColor},0)`);
+          ctx.fillStyle = gg;
+          ctx.beginPath(); ctx.arc(0, 0, 25, 0, Math.PI * 2); ctx.fill();
+          ctx.globalCompositeOperation = 'source-over';
+
+          // Icon
+          if (isStar) {
+            drawStarShape(12, 5);
+            ctx.fillStyle = 'rgba(255,234,82,1)';
+            ctx.fill();
+          } else {
+            drawGemShape(9);
+            ctx.fillStyle = 'rgba(140,208,255,1)';
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+      }
+
       function collectItem(c) {
         c.collected = true;
+        // V2: 超强恢复逻辑与状态记录
+        if (soundOn && audio) {
+          if (audio.ac.state !== 'running') {
+            console.log("%c ⚠️ Audio Latency Detected - Resuming context...", "color: #f39c12;");
+            audio.ac.resume().then(() => {
+              audio.collectDing(1.2); // 成功恢复后播放
+            });
+          } else {
+            audio.collectDing(1.2);
+          }
+        }
+
+        // Spawn fly-to-HUD particle from collect position
+        spawnFlyToHud(c.x, c.y, c.type);
         collectionNotifications.push({ x: c.x, y: c.y - 8, icon: c.type === 'star' ? '⭐' : '💎', life: 0, maxLife: 1100 });
-        if (soundOn && audio) audio.bubbleTick(0.65);
       }
 
       function updateMicroSurprises(dt, t) {
         microSurprises.timer -= dt;
-        // Always ensure at least one collectible if none exist
-        if (collectibles.length < 2) {
-          spawnMicroSurprise(t);
-          microSurprises.timer = rand(1500, 3000); // DOUBLED FREQUENCY
+
+        // Ensure minimum collectibles on screen: at least 4 stars and 4 gems
+        const starCount = collectibles.filter(c => c.type === 'star' && !c.collected).length;
+        const gemCount = collectibles.filter(c => c.type === 'gem' && !c.collected).length;
+        if (starCount < 4) {
+          const need = 4 - starCount;
+          for (let i = 0; i < need; i++) {
+            collectibles.push({
+              type: 'star', x: rand(W * 0.08, W * 0.92), y: rand(H * 0.06, H * 0.50),
+              vx: rand(-0.25, 0.25), vy: rand(0.15, 0.35), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(8000, 14000), collected: false, collectAnim: 0
+            });
+          }
+        }
+        if (gemCount < 4) {
+          const need = 4 - gemCount;
+          for (let i = 0; i < need; i++) {
+            collectibles.push({
+              type: 'gem', x: rand(W * 0.08, W * 0.92), y: rand(-45, H * 0.25),
+              vx: rand(-0.2, 0.2), vy: rand(0.2, 0.4), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(9000, 15000), collected: false, collectAnim: 0
+            });
+          }
         }
         if (microSurprises.timer <= 0) { spawnMicroSurprise(t); microSurprises.timer = rand(1500, 3000); }
 
@@ -2847,6 +3163,58 @@
           o.stop(t + 0.4);
         }
 
+        // --- COLLECT DING SOUND (Metallic Clang Style V4) ---
+        // V4: Redesigned to sound like a metal spoon hitting a metal cup
+        function collectDing(str = 1.0) {
+          console.log("%c 🔊 [V4] Metallic Spoon Clang Triggered!", "color: #e67e22; font-weight: bold;");
+          const t = ac.currentTime;
+
+          // Master envelope for the ding
+          const masterG = ac.createGain();
+          masterG.gain.value = str * 1.8;
+          masterG.connect(outGain);
+
+          // 1. Initial "Click" (Impact point of the spoon)
+          const clickOsc = ac.createOscillator();
+          clickOsc.type = 'square';
+          clickOsc.frequency.setValueAtTime(1400, t);
+          const clickGain = ac.createGain();
+          clickGain.gain.setValueAtTime(0.3, t);
+          clickGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.008);
+          clickOsc.connect(clickGain);
+          clickGain.connect(masterG);
+          clickOsc.start(t); clickOsc.stop(t + 0.01);
+
+          // 2. Metallic Resonance (Inharmonic frequencies)
+          // Spoon-on-metal fundamental is often lower than bird chirps
+          const components = [
+            { f: 580, g: 0.5, type: 'triangle' }, // Body of the sound
+            { f: 820, g: 0.3, type: 'sine' },
+            { f: 1240, g: 0.2, type: 'sine' },
+            { f: 1680, g: 0.15, type: 'sine' },
+            { f: 2350, g: 0.1, type: 'sine' }
+          ];
+
+          components.forEach((c, i) => {
+            const osc = ac.createOscillator();
+            osc.type = c.type;
+            osc.frequency.setValueAtTime(c.f + Math.random() * 5, t);
+
+            const g = ac.createGain();
+            const decay = 0.08 + (0.15 / (i + 1)); // Complex decay
+
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.exponentialRampToValueAtTime(c.g, t + 0.005);
+            g.gain.exponentialRampToValueAtTime(c.g * 0.4, t + 0.04);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+
+            osc.connect(g);
+            g.connect(masterG);
+            osc.start(t);
+            osc.stop(t + decay + 0.1);
+          });
+        }
+
         function splashTick(str = 0.5) {
           const t = ac.currentTime;
           const body = ac.createOscillator();
@@ -2954,6 +3322,7 @@
             master.gain.linearRampToValueAtTime(0.0, t + 0.35);
           },
           bubbleTick,
+          collectDing,
           splashTick,
           setAmbiance,
           swish,
@@ -4197,6 +4566,10 @@
         drawPredator(); // MOVED ON TOP
         drawCollectibles(t);
         drawCollectionNotifications(t);
+
+        // Fly-to-HUD animation (above everything)
+        updateFlyToHud(dt);
+        drawFlyToHud(t);
 
         // Predator light-wave rings + victory flash (foreground, above everything)
         drawPredatorWaves();
