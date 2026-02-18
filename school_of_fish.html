@@ -755,8 +755,8 @@
       }
       // ---------- HUD ----------
       const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      let SPEED = 1.2;
-      let targetFishCount = 700;
+      let SPEED = isMobile ? 0.7 : 1.2;
+      let targetFishCount = isMobile ? 500 : 700;
 
       // Collection stats
       let collectedStars = 0;
@@ -2850,25 +2850,32 @@
       function updateMicroSurprises(dt, t) {
         microSurprises.timer -= dt;
 
-        // Ensure minimum collectibles on screen: at least 4 stars and 4 gems
-        const starCount = collectibles.filter(c => c.type === 'star' && !c.collected).length;
-        const gemCount = collectibles.filter(c => c.type === 'gem' && !c.collected).length;
-        if (starCount < 4) {
-          const need = 4 - starCount;
-          for (let i = 0; i < need; i++) {
-            collectibles.push({
-              type: 'star', x: rand(W * 0.08, W * 0.92), y: rand(H * 0.06, H * 0.50),
-              vx: rand(-0.25, 0.25), vy: rand(0.15, 0.35), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(8000, 14000), collected: false, collectAnim: 0
-            });
+        // Ensure minimum collectibles on screen: at least 4 stars and 4 gems, max 10 total
+        const activeCollectibles = collectibles.filter(c => !c.collected);
+        const starCount = activeCollectibles.filter(c => c.type === 'star').length;
+        const gemCount = activeCollectibles.filter(c => c.type === 'gem').length;
+        const totalActive = activeCollectibles.length;
+
+        if (totalActive < 10) {
+          if (starCount < 4) {
+            const need = Math.min(4 - starCount, 10 - totalActive);
+            for (let i = 0; i < need; i++) {
+              collectibles.push({
+                type: 'star', x: rand(W * 0.08, W * 0.92), y: rand(H * 0.06, H * 0.50),
+                vx: rand(-0.25, 0.25), vy: rand(0.15, 0.35), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(8000, 14000), collected: false, collectAnim: 0
+              });
+            }
           }
-        }
-        if (gemCount < 4) {
-          const need = 4 - gemCount;
-          for (let i = 0; i < need; i++) {
-            collectibles.push({
-              type: 'gem', x: rand(W * 0.08, W * 0.92), y: rand(-45, H * 0.25),
-              vx: rand(-0.2, 0.2), vy: rand(0.2, 0.4), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(9000, 15000), collected: false, collectAnim: 0
-            });
+          // Re-calculate after potential stars
+          const currentTotal = collectibles.filter(c => !c.collected).length;
+          if (gemCount < 4 && currentTotal < 10) {
+            const need = Math.min(4 - gemCount, 10 - currentTotal);
+            for (let i = 0; i < need; i++) {
+              collectibles.push({
+                type: 'gem', x: rand(W * 0.08, W * 0.92), y: rand(-45, H * 0.25),
+                vx: rand(-0.2, 0.2), vy: rand(0.2, 0.4), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(9000, 15000), collected: false, collectAnim: 0
+              });
+            }
           }
         }
         if (microSurprises.timer <= 0) { spawnMicroSurprise(t); microSurprises.timer = rand(1500, 3000); }
