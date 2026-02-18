@@ -2254,7 +2254,7 @@
         critters.push({
           type: type,
           x: side < 0 ? -150 : W + 150,
-          y: H - rand(40, 100),
+          y: H - rand(70, 150), // Increased height slightly to ensure visibility
           direction: -side,
           speed: rand(0.7, 1.4),
           scale: rand(0.22, 0.33),
@@ -2294,7 +2294,7 @@
             const la = Math.sin(c.phase * 0.1 + phase) * 0.6;
             ctx.save(); ctx.translate(ox, 40); ctx.rotate(la);
             ctx.fillStyle = c.color; ctx.fillRect(-12, 0, 24, 45);
-            ctx.fillStyle = '#332211'; ctx.roundRect(-13, 37, 26, 15, [2, 2, 5, 5]); ctx.fill();
+            ctx.fillStyle = '#332211'; ctx.fillRect(-13, 37, 26, 12); // Replaced roundRect for better compatibility
             ctx.restore();
           };
           drawLeg(-45, Math.PI); drawLeg(15, 0);
