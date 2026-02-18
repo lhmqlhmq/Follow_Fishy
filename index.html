@@ -2249,7 +2249,7 @@
 
       function spawnCritter() {
         const side = Math.random() < 0.5 ? -1 : 1;
-        const types = ['pony', 'cat', 'rabbit', 'pig'];
+        const types = ['pony', 'cat', 'rabbit', 'pig', 'monkey'];
         const type = types[Math.floor(Math.random() * types.length)];
         const h = Math.random() * 360;
         const s = rand(50, 90);
@@ -2349,6 +2349,42 @@
             ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.beginPath(); ctx.ellipse(0, -30, 6, 35, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore(); ctx.fillStyle = c.color;
           };
           drawEar(-15); drawEar(10); drawCommonHead(15, -5); ctx.restore();
+        } else if (c.type === 'monkey') {
+          // --- Monkey specific: Hop & Walk gait ---
+          const hopCycle = (c.phase * 0.08) % (Math.PI * 2);
+          const isHopping = hopCycle > Math.PI;
+          const hopY = isHopping ? -Math.abs(Math.sin(hopCycle)) * 40 : 0;
+          ctx.translate(0, hopY);
+
+          const drawLeg = (ox, phase, isArm = false) => {
+            const la = Math.sin(c.phase * 0.1 + phase) * (isHopping ? 1.2 : 0.6);
+            ctx.save(); ctx.translate(ox, isArm ? 10 : 40); ctx.rotate(la);
+            ctx.fillStyle = c.color; ctx.fillRect(-8, 0, 16, isArm ? 35 : 40); ctx.restore();
+          };
+          // Legs
+          drawLeg(-35, Math.PI); drawLeg(10, 0);
+          // Body
+          ctx.fillStyle = c.color; ctx.beginPath(); ctx.ellipse(0, 10, 75, 60, 0, 0, Math.PI * 2); ctx.fill();
+          // Arms
+          drawLeg(0, Math.PI * 0.5, true); drawLeg(30, Math.PI * 1.5, true);
+          // Tail (Very long and curly)
+          ctx.save(); ctx.translate(-70, 0); ctx.rotate(tailWag);
+          ctx.lineWidth = 10; ctx.strokeStyle = c.color; ctx.lineCap = 'round';
+          ctx.beginPath(); ctx.moveTo(0, 0);
+          ctx.bezierCurveTo(-60, 40, -100, -80, -40, -100); // Curly end
+          ctx.stroke(); ctx.restore();
+          // Head
+          ctx.save(); ctx.translate(60, -30); ctx.fillStyle = c.color;
+          ctx.beginPath(); ctx.ellipse(0, 0, 50, 45, 0, 0, Math.PI * 2); ctx.fill();
+          // Face patch
+          ctx.fillStyle = c.muzzleColor; ctx.beginPath(); ctx.ellipse(10, 5, 35, 30, 0, 0, Math.PI * 2); ctx.fill();
+          // Ears
+          const drawEar = (ox) => {
+            ctx.fillStyle = c.color; ctx.beginPath(); ctx.arc(ox, -15, 18, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = c.muzzleColor; ctx.beginPath(); ctx.arc(ox, -15, 10, 0, Math.PI * 2); ctx.fill();
+          };
+          drawEar(-45); drawEar(25);
+          drawCommonHead(15, -5); ctx.restore();
         } else if (c.type === 'pig') {
           const drawLeg = (ox, phase) => {
             const la = Math.sin(c.phase * 0.1 + phase) * 0.6;
@@ -4120,7 +4156,7 @@
       // ============================================================
       // BOOT
       // ============================================================
-      console.log("%c Follow Fishy v2.3.1 - Refined Error Suppression %c", "background: #2a2; color: #fff; padding: 4px; border-radius: 4px;", "");
+      console.log("%c Follow Fishy v2.3.2 - Monkey & Infinite Scroll Fix %c", "background: #2a2; color: #fff; padding: 4px; border-radius: 4px;", "");
       resize();
       initSnow();
       initGodRays();
