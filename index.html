@@ -212,6 +212,7 @@
       #snd {
         padding: 2px 4px;
         font-size: 8px;
+        min-width: 38px;
       }
     }
 
@@ -276,7 +277,7 @@
       border-radius: 999px;
       border: 1px solid rgba(255, 255, 255, 0.10);
       background: rgba(255, 255, 255, 0.06);
-      min-width: 54px;
+      min-width: 48px;
       text-align: center;
       font-weight: 700;
     }
@@ -384,8 +385,8 @@
 
   <div class="hud">
     <div class="stats" id="collectStats">
-      <span class="stat-item" id="starStatItem">⭐<span class="stats-count" id="starCount">0</span></span>
-      <span class="stat-item" id="gemStatItem">💎<span class="stats-count" id="gemCount">0</span></span>
+      <span class="stat-item" id="starStatItem">🪙<span class="stats-count" id="starCount">0</span></span>
+      <span class="stat-item" id="gemStatItem">🧧<span class="stats-count" id="gemCount">0</span></span>
     </div>
     <div class="controls-right">
       <div class="grp">
@@ -405,7 +406,7 @@
   </div>
 
 
-  <div class="hint" id="hint">Move to lead the school • Tap fish to play • Collect ⭐💎</div>
+  <div class="hint" id="hint">Move to lead the school • Tap fish to play • Collect 🪙🧧</div>
   <div class="watermark">Follow Fishy, Created by Jason Li</div>
   <div id="extError" class="error-toast">⚠️ 检测到 "Site Blocker" 插件报错，请忽略或禁用该插件</div>
 
@@ -464,6 +465,7 @@
 
 
       const seagrass = [];
+      const lanterns = [];
       // 三种水草类型：高大海藻、中等标准、矮小细草
       const SEAGRASS_TYPES = [
         { name: 'kelp', lenMin: 140, lenMax: 280, widthMin: 5, widthMax: 8, hueRange: [125, 155], satMin: 28, satMax: 45, litMin: 22, litMax: 35, weight: 25 },
@@ -504,6 +506,20 @@
         }
       }
 
+      function initLanterns() {
+        lanterns.length = 0;
+        const count = isMobile ? 3 : 6;
+        for (let i = 0; i < count; i++) {
+          lanterns.push({
+            x: rand(W * 0.05, W * 0.95),
+            y: rand(H * 0.1, H * 0.4),
+            size: rand(20, 35),
+            phase: Math.random() * Math.PI * 2,
+            speed: rand(0.0005, 0.0012)
+          });
+        }
+      }
+
       function updateSeagrass(dt, t) {
         for (const g of seagrass) {
           // Natural sway - each blade has its own rhythm
@@ -527,6 +543,47 @@
           ctx.beginPath();
           ctx.moveTo(g.x, g.y);
           ctx.quadraticCurveTo(g.x, g.y - g.len * 0.5, g.tipX, g.tipY);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      function drawLanterns(t) {
+        ctx.save();
+        // Background lanterns are blurred and slightly faded
+        ctx.filter = 'blur(2.5px)';
+        for (const l of lanterns) {
+          const pulse = 0.85 + 0.15 * Math.sin(t * l.speed + l.phase);
+          const x = l.x;
+          const y = l.y + Math.sin(t * 0.0005 + l.phase) * 15;
+          const s = l.size * pulse;
+
+          // Glow
+          ctx.globalCompositeOperation = 'screen';
+          const gg = ctx.createRadialGradient(x, y, 0, x, y, s * 3);
+          gg.addColorStop(0, 'rgba(215, 35, 35, 0.2)');
+          gg.addColorStop(1, 'rgba(215, 35, 35, 0)');
+          ctx.fillStyle = gg;
+          ctx.beginPath(); ctx.arc(x, y, s * 3, 0, Math.PI * 2); ctx.fill();
+
+          // Lantern body (oval)
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.fillStyle = 'rgba(200, 30, 30, 0.7)';
+          ctx.beginPath();
+          ctx.ellipse(x, y, s * 0.7, s, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Golden caps
+          ctx.fillStyle = 'rgba(180, 150, 30, 0.7)';
+          ctx.beginPath(); ctx.rect(x - s * 0.4, y - s, s * 0.8, s * 0.15); ctx.fill();
+          ctx.beginPath(); ctx.rect(x - s * 0.4, y + s * 0.85, s * 0.8, s * 0.15); ctx.fill();
+
+          // Tassel hint
+          ctx.strokeStyle = 'rgba(180, 30, 30, 0.5)';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(x, y + s);
+          ctx.lineTo(x, y + s * 1.8);
           ctx.stroke();
         }
         ctx.restore();
@@ -742,7 +799,8 @@
           life: 0, maxLife: 1500,
           riseTime: 30, fadeTime: 1400,
           compressionPhase: 0,
-          intensity: 1.0
+          intensity: 1.0,
+          shockColor: '255, 215, 0' // Default to Gold
         });
 
         spawnBubbleCluster(cx, cy);
@@ -2816,12 +2874,12 @@
 
           // Icon
           if (isStar) {
-            drawStarShape(12, 5);
-            ctx.fillStyle = 'rgba(255,234,82,1)';
+            drawCopperCoin(12);
+            ctx.fillStyle = 'rgba(255,215,0,1)'; // Gold
             ctx.fill();
           } else {
-            drawGemShape(9);
-            ctx.fillStyle = 'rgba(140,208,255,1)';
+            drawRedEnvelope(10);
+            ctx.fillStyle = 'rgba(215,35,35,1)'; // Red
             ctx.fill();
           }
           ctx.restore();
@@ -2830,6 +2888,10 @@
 
       function collectItem(c) {
         c.collected = true;
+        // Add light vibration for mobile devices
+        if (window.navigator && window.navigator.vibrate) {
+          window.navigator.vibrate(15);
+        }
         // V2: 超强恢复逻辑与状态记录
         if (soundOn && audio) {
           if (audio.ac.state !== 'running') {
@@ -2844,14 +2906,14 @@
 
         // Spawn fly-to-HUD particle from collect position
         spawnFlyToHud(c.x, c.y, c.type);
-        collectionNotifications.push({ x: c.x, y: c.y - 8, icon: c.type === 'star' ? '⭐' : '💎', life: 0, maxLife: 1100 });
+        collectionNotifications.push({ x: c.x, y: c.y - 8, icon: c.type === 'star' ? '🪙' : '🧧', life: 0, maxLife: 1100 });
       }
 
       function updateMicroSurprises(dt, t) {
         microSurprises.timer -= dt;
 
         // --- STRICT COLLECTIBLE CONTROL (V6) ---
-        const MAX_TOTAL_ACTIVE = 10;
+        const MAX_TOTAL_ACTIVE = 8;
         const MIN_SPACING = 150;
 
         let activeCollectibles = collectibles.filter(c => !c.collected);
@@ -2862,8 +2924,8 @@
           const starCount = activeCollectibles.filter(c => c.type === 'star').length;
           const gemCount = activeCollectibles.filter(c => c.type === 'gem').length;
 
-          // Re-fill if below minimum (4 each) OR if we have gaps up to 10
-          if (starCount < 4 || gemCount < 4 || totalActive < 8) {
+          // Re-fill if total active < 8
+          if (totalActive < 8) {
             // Try to spawn one item this tick if needed
             let typeToSpawn = null;
             if (starCount < 4) typeToSpawn = 'star';
@@ -2935,27 +2997,28 @@
         }
       }
 
-      // --- Micro-surprise drawing helpers ---
-      function drawStarShape(outerR, innerR) {
-        const pts = 5;
+      // --- CNY Asset drawing helpers ---
+      function drawCopperCoin(size) {
         ctx.beginPath();
-        for (let i = 0; i < pts * 2; i++) {
-          const a = (i * Math.PI / pts) - Math.PI / 2;
-          const r2 = i % 2 === 0 ? outerR : innerR;
-          if (i === 0) ctx.moveTo(Math.cos(a) * r2, Math.sin(a) * r2);
-          else ctx.lineTo(Math.cos(a) * r2, Math.sin(a) * r2);
-        }
+        ctx.arc(0, 0, size, 0, Math.PI * 2);
+        // Inner square hole
+        const s = size * 0.35;
+        ctx.moveTo(-s, -s);
+        ctx.lineTo(s, -s);
+        ctx.lineTo(s, s);
+        ctx.lineTo(-s, s);
         ctx.closePath();
       }
 
-      function drawGemShape(size) {
+      function drawRedEnvelope(size) {
+        const w = size * 0.7;
+        const h = size * 1.1;
         ctx.beginPath();
-        ctx.moveTo(0, -size * 1.3);
-        ctx.lineTo(size, -size * 0.2);
-        ctx.lineTo(size * 0.7, size * 0.9);
-        ctx.lineTo(-size * 0.7, size * 0.9);
-        ctx.lineTo(-size, -size * 0.2);
-        ctx.closePath();
+        ctx.rect(-w / 2, -h / 2, w, h);
+        // Decoration (flap)
+        ctx.moveTo(-w / 2, -h / 2);
+        ctx.lineTo(0, -h / 2 + h * 0.3);
+        ctx.lineTo(w / 2, -h / 2);
       }
 
       function drawFishFry(t) {
@@ -2998,14 +3061,14 @@
             ctx.globalAlpha = 1 - p;
             ctx.translate(c.x, c.y);
             ctx.scale(1 + p * 2.0, 1 + p * 2.0);
-            if (c.type === 'star') { drawStarShape(13, 5.5); ctx.fillStyle = 'rgba(255,234,82,1)'; ctx.fill(); }
-            else { drawGemShape(10); ctx.fillStyle = 'rgba(140,208,255,1)'; ctx.fill(); }
+            if (c.type === 'star') { drawCopperCoin(13); ctx.fillStyle = 'rgba(255,215,0,1)'; ctx.fill(); }
+            else { drawRedEnvelope(22); ctx.fillStyle = 'rgba(215,35,35,1)'; ctx.fill(); }
             // Burst particles
             for (let i = 0; i < 7; i++) {
               const a = (i / 7) * Math.PI * 2 + p * 3.5;
               const pr = p * 48;
               ctx.globalAlpha = (1 - p) * 0.55;
-              ctx.fillStyle = c.type === 'star' ? 'rgba(255,244,145,1)' : 'rgba(195,232,255,1)';
+              ctx.fillStyle = c.type === 'star' ? 'rgba(255,223,100,1)' : 'rgba(255,100,100,1)';
               ctx.beginPath(); ctx.arc(Math.cos(a) * pr, Math.sin(a) * pr, 2.8 * (1 - p), 0, Math.PI * 2); ctx.fill();
             }
             ctx.restore();
@@ -3034,26 +3097,28 @@
 
           if (c.type === 'star') {
             ctx.globalAlpha = 0.95;
-            drawStarShape(15, 6.2);
+            drawCopperCoin(15);
             const sg = ctx.createRadialGradient(0, 0, 0, 0, 0, 15);
-            sg.addColorStop(0, 'rgba(255,255,190,1)');
-            sg.addColorStop(0.5, 'rgba(255,234,82,1)');
-            sg.addColorStop(1, 'rgba(255,198,46,1)');
+            sg.addColorStop(0, 'rgba(255,255,210,1)');
+            sg.addColorStop(0.5, 'rgba(255,215,0,1)');
+            sg.addColorStop(1, 'rgba(218,165,32,1)');
             ctx.fillStyle = sg; ctx.fill();
-            ctx.strokeStyle = 'rgba(255,255,215,0.55)'; ctx.lineWidth = 1.1; ctx.stroke();
+            ctx.strokeStyle = 'rgba(255,255,230,0.6)'; ctx.lineWidth = 1.2; ctx.stroke();
+            // Square hole shadow/highlight
+            ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.stroke();
           } else {
             ctx.globalAlpha = 0.94;
-            drawGemShape(11);
-            const gg2 = ctx.createLinearGradient(-11, -15, 11, 10);
-            gg2.addColorStop(0, 'rgba(210,244,255,1)');
-            gg2.addColorStop(0.4, 'rgba(140,218,255,1)');
-            gg2.addColorStop(0.7, 'rgba(100,185,244,1)');
-            gg2.addColorStop(1, 'rgba(78,160,222,1)');
+            drawRedEnvelope(26);
+            const gg2 = ctx.createLinearGradient(-22, -30, 22, 30);
+            gg2.addColorStop(0, 'rgba(255,100,100,1)');
+            gg2.addColorStop(0.4, 'rgba(215,35,35,1)');
+            gg2.addColorStop(0.7, 'rgba(180,20,20,1)');
+            gg2.addColorStop(1, 'rgba(140,0,0,1)');
             ctx.fillStyle = gg2; ctx.fill();
-            ctx.strokeStyle = 'rgba(210,244,255,0.45)'; ctx.lineWidth = 0.9; ctx.stroke();
-            // Inner highlight facet
-            ctx.fillStyle = 'rgba(255,255,255,0.24)';
-            ctx.beginPath(); ctx.moveTo(0, -9.5); ctx.lineTo(5, -1.8); ctx.lineTo(-2.8, -3.8); ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = 'rgba(255,200,100,0.4)'; ctx.lineWidth = 1.0; ctx.stroke();
+            // "Fu" character hint or gold seal
+            ctx.fillStyle = 'rgba(255,215,0,0.8)';
+            ctx.beginPath(); ctx.arc(0, 4, 8, 0, Math.PI * 2); ctx.fill();
           }
           ctx.restore();
         }
@@ -3451,23 +3516,21 @@
 
         for (let i = 0; i < n; i++) {
           const roll = Math.random();
+          const isKoi = roll < 0.02; // 2% chance for a Rare Elite Koi
+          const isStrange = !isKoi && false; // DISABLED UNNATURAL FISH
+          const isColorful = !isKoi && !isStrange && roll < 0.21;
+          const isLarge = !isKoi && !isStrange && !isColorful && roll < 0.45;
 
-          // Adjusted ratios: Colorful reduced from 0.35 to 0.21
-          const isStrange = false; // DISABLED UNNATURAL FISH
-          const isColorful = !isStrange && roll < 0.21;
-          const isLarge = !isStrange && !isColorful && roll < 0.45;
-
-          // Size: normal 3.5-5.5, large 5.25-8.25
-          let size = isLarge ? rand(5.25, 8.25) : rand(3.5, 5.5);
+          // Size: normal 3.5-5.5, large 5.25-8.25, Koi 6.0-9.0
+          let size = isKoi ? rand(6.0, 9.0) : (isLarge ? rand(5.25, 8.25) : rand(3.5, 5.5));
           if (isStrange) size *= 1.25;
 
           // Pick color type
           let colorType;
           let strangeProps = null;
-          if (isStrange) {
-            colorType = strangeTypes[Math.floor(Math.random() * strangeTypes.length)];
-            strangeProps = colorType;
-          } else if (isColorful) {
+          if (isKoi) {
+            colorType = { baseHue: 0, satRange: [80, 100], name: 'koi' };
+          } else if (isStrange) {
             colorType = colorfulTypes[Math.floor(Math.random() * colorfulTypes.length)];
           } else {
             const weights = [40, 25, 20, 10, 5];
@@ -3513,7 +3576,11 @@
             response: null,
             suppressAttraction: 0,
             expansionBoost: 1.0,
-            lastHeading: 0
+            isKoi,
+            koiPattern: isKoi ? Array.from({ length: 5 }, () => ({ x: rand(0.2, 0.8), y: rand(-0.3, 0.3), r: rand(0.15, 0.35) })) : null,
+            leapTimer: isKoi ? rand(5000, 15000) : 0,
+            leaping: false,
+            trail: []
           };
 
 
@@ -3721,10 +3788,11 @@
             ctx.globalAlpha = intensity * 0.22;
 
             const gradient = ctx.createRadialGradient(ev.x, ev.y, 0, ev.x, ev.y, ev.radius);
-            // Warmer during scatter, cooler during regroup
+            // Support CNY Festive colors (Gold/Red)
+            const baseColor = ev.shockColor || '180, 215, 235';
             const warmth = ev.compressionPhase < 0.5 ? 0.3 : 0;
-            gradient.addColorStop(0, `rgba(${200 + warmth * 40}, ${215 + warmth * 20}, 235, 0.25)`);
-            gradient.addColorStop(0.6, `rgba(${180 + warmth * 30}, ${200 + warmth * 15}, 225, 0.1)`);
+            gradient.addColorStop(0, `rgba(${baseColor}, 0.28)`);
+            gradient.addColorStop(0.6, `rgba(${baseColor}, 0.12)`);
             gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
             ctx.fillStyle = gradient;
             ctx.beginPath();
@@ -4022,6 +4090,76 @@
           ctx.arc(s * 1.62, -s * 0.12, eyeSize * 0.25, 0, Math.PI * 2);
           ctx.fill();
         }
+
+        ctx.restore();
+      }
+
+      function drawKoi(f, s, t, nearPow, alpha) {
+        // Koi Body - Slightly more slender than normal fish
+        ctx.save();
+        const bodyWave = Math.sin(t * 0.005 + f.phase) * 0.15;
+        ctx.rotate(bodyWave * 0.2);
+
+        // Gradient for body (mostly white base)
+        const bg = ctx.createLinearGradient(s * 1.5, 0, -s, 0);
+        bg.addColorStop(0, 'rgba(255, 255, 245, 1)');
+        bg.addColorStop(1, 'rgba(240, 240, 230, 1)');
+        ctx.fillStyle = bg;
+
+        // Draw basic fish shape but slightly adjusted for Koi
+        ctx.beginPath();
+        ctx.moveTo(s * 1.8, 0); // Nose
+        ctx.bezierCurveTo(s * 1.2, -s * 0.5, -s * 0.5, -s * 0.4, -s * 1.2, 0);
+        ctx.bezierCurveTo(-s * 0.5, s * 0.4, s * 1.2, s * 0.5, s * 1.8, 0);
+        ctx.fill();
+
+        // Draw Red Patterns (Kohaku style)
+        ctx.save();
+        ctx.clip();
+        ctx.fillStyle = 'rgba(215, 35, 35, 0.95)';
+        for (const p of f.koiPattern) {
+          ctx.beginPath();
+          ctx.arc(s * (p.x * 2 - 1), s * p.y, s * p.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+
+        // Fin accents (brighter red)
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = 'rgba(215, 35, 35, 0.3)';
+        // Top fin
+        ctx.beginPath();
+        ctx.moveTo(0, -s * 0.4);
+        ctx.quadraticCurveTo(s * 0.2, -s * 0.7, -s * 0.3, -s * 0.45);
+        ctx.stroke();
+
+        // Tail (Flowing)
+        const tailWave = Math.sin(t * 0.008 + f.phase) * 0.4;
+        ctx.save();
+        ctx.translate(-s * 1.1, 0);
+        ctx.rotate(tailWave);
+        ctx.fillStyle = 'rgba(255, 255, 245, 0.8)';
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-s * 1.5, -s * 0.8);
+        ctx.quadraticCurveTo(-s * 1.1, 0, -s * 1.5, s * 0.8);
+        ctx.closePath();
+        ctx.fill();
+        // Red edge on tail
+        ctx.fillStyle = 'rgba(215, 35, 35, 0.6)';
+        ctx.beginPath();
+        ctx.moveTo(-s * 1.2, -s * 0.5);
+        ctx.lineTo(-s * 1.45, -s * 0.65);
+        ctx.lineTo(-s * 1.45, s * 0.65);
+        ctx.lineTo(-s * 1.2, s * 0.5);
+        ctx.fill();
+        ctx.restore();
+
+        // Eye
+        ctx.fillStyle = 'rgba(20, 20, 20, 0.9)';
+        ctx.beginPath();
+        ctx.arc(s * 1.5, -s * 0.12, s * 0.12, 0, Math.PI * 2);
+        ctx.fill();
 
         ctx.restore();
       }
@@ -4511,6 +4649,40 @@
           f.x += f.vx * dt * stepK;
           f.y += f.vy * dt * stepK;
 
+          // Koi Leap Behavior
+          if (f.isKoi) {
+            f.leapTimer -= dt;
+            if (f.leapTimer <= 0 && !f.leaping) {
+              f.leaping = true;
+              f.leapProgress = 0;
+              f.leapDuration = rand(800, 1400);
+              f.leapVx = f.vx * 2.5;
+              f.leapVy = f.vy * 2.5;
+            }
+            if (f.leaping) {
+              f.leapProgress += dt / f.leapDuration;
+              const p = f.leapProgress;
+              // Add golden trail
+              if (Math.random() < 0.6) {
+                f.trail.push({ x: f.x, y: f.y, life: 300, maxLife: 300 });
+              }
+              // Leap arc: extra speed + vertical offset handle via position if needed, 
+              // but here we just boost velocity and visual trail
+              f.vx += f.leapVx * 0.05 * (1 - p);
+              f.vy += f.leapVy * 0.05 * (1 - p);
+
+              if (p >= 1) {
+                f.leaping = false;
+                f.leapTimer = rand(5000, 15000);
+              }
+            }
+            // Update trail
+            for (let j = f.trail.length - 1; j >= 0; j--) {
+              f.trail[j].life -= dt;
+              if (f.trail[j].life <= 0) f.trail.splice(j, 1);
+            }
+          }
+
           // Wrap
           if (f.x < -60) f.x = W + 60;
           else if (f.x > W + 60) f.x = -60;
@@ -4541,6 +4713,7 @@
         // Environment
         updateSeagrass(dt, t);
         drawSeagrass();
+        drawLanterns(t);
 
         // Megafauna in deep background (behind everything else)
         updateMegafauna(dt);
@@ -4603,7 +4776,32 @@
               if ((f.depthLayer || 'midground') !== layer) continue;
               const isLargePass = pass === 1;
               if (f.isLarge !== isLargePass) continue;
-              drawFish(f, t);
+
+              // Calculate near/depth properties for rendering
+              const dx = f.x - pointer.x, dy = f.y - pointer.y;
+              const dist = Math.hypot(dx, dy);
+              const maxDist = Math.min(W, H) * 0.65;
+              const near = 1 - Math.min(1, dist / maxDist);
+              const nearPow = Math.pow(near, 0.6);
+              const depthAlpha = f.depthAlpha || 1;
+
+              // Draw Koi trail
+              if (f.isKoi && f.trail.length > 0) {
+                ctx.save();
+                ctx.globalCompositeOperation = 'screen';
+                for (const t_particle of f.trail) {
+                  const trailP = t_particle.life / t_particle.maxLife;
+                  ctx.globalAlpha = trailP * 0.4;
+                  ctx.fillStyle = 'rgba(255, 215, 0, 0.6)';
+                  ctx.beginPath();
+                  ctx.arc(t_particle.x, t_particle.y, f.size * 0.6 * trailP, 0, Math.PI * 2);
+                  ctx.fill();
+                }
+                ctx.restore();
+              }
+
+              if (f.isKoi) drawKoi(f, f.size, t, nearPow, depthAlpha);
+              else drawFish(f, t);
             }
           }
         }
@@ -4645,6 +4843,7 @@
       initSpatial();
       initSubSchools();
       initSeagrass();
+      initLanterns();
 
 
       // Initial pointer position
