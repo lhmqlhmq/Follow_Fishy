@@ -3573,7 +3573,7 @@
           y: y !== undefined ? y : Math.random() * H,
           vx: rand(-0.25, 0.25),
           vy: rand(-0.25, 0.25),
-          size: rand(18.0, 27.0),
+          size: rand(54.0, 81.0),
           isLarge: false,
           isColorful: false,
           isStrange: false,
@@ -4307,7 +4307,8 @@
         ctx.arc(s * 1.5, -s * 0.12, s * 0.12, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.restore();
+        ctx.restore(); // Restore body wave
+        ctx.restore(); // Restore outer transform
       }
 
       // ============================================================
