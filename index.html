@@ -823,25 +823,6 @@
         spawnBubbleCluster(clickX, clickY);
       }
 
-      function triggerScreenShake(magnitude = 10) {
-        const duration = 250;
-        const startTime = performance.now();
-        const originalTransform = ctx.getTransform();
-
-        function shake() {
-          const elapsed = performance.now() - startTime;
-          if (elapsed < duration) {
-            const p = 1 - (elapsed / duration);
-            const ox = (Math.random() - 0.5) * magnitude * p;
-            const oy = (Math.random() - 0.5) * magnitude * p;
-            document.body.style.transform = `translate(${ox}px, ${oy}px)`;
-            requestAnimationFrame(shake);
-          } else {
-            document.body.style.transform = 'none';
-          }
-        }
-        shake();
-      }
 
       function triggerFlashExpansion(cx, cy) {
         // Flash Expansion: Large-scale repulsion
@@ -2985,13 +2966,7 @@
         c.collected = true;
         totalCollections++;
 
-        // Add noticeable vibration for mobile devices - Stronger pattern
-        if (window.navigator && window.navigator.vibrate) {
-          window.navigator.vibrate([60, 40, 60]);
-        } else {
-          // iOS Fallback: Visual shake
-          triggerScreenShake(8);
-        }
+        // Haptics removed at user request (vibration/shake causes dizziness)
 
         // Trigger Koi every 30 collections
         if (totalCollections > 0 && totalCollections % 30 === 0) {
@@ -3598,7 +3573,7 @@
           y: y !== undefined ? y : Math.random() * H,
           vx: rand(-0.25, 0.25),
           vy: rand(-0.25, 0.25),
-          size: rand(6.0, 9.0),
+          size: rand(18.0, 27.0),
           isLarge: false,
           isColorful: false,
           isStrange: false,
@@ -5072,14 +5047,8 @@
       };
 
       window.testVibrate = () => {
-        console.log("%c 🧪 Manual Trigger: Vibration & Screen Shake", "color: #0af; font-weight: bold;");
-        triggerScreenShake(12);
-        if (navigator.vibrate) {
-          navigator.vibrate([80, 50, 80]);
-        } else {
-          console.warn("Vibration API not supported on this browser. Fallback to screen shake.");
-          // alert("Your browser does not support the Vibration API. Triggering screen shake instead.");
-        }
+        console.log("%c 🧪 Manual Trigger: Haptics Disabled", "color: #95a5a6; font-weight: bold;");
+        // Haptics/Shake disabled per user request
       };
 
       window.resetCollections = () => {
