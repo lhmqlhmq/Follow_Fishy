@@ -2756,17 +2756,22 @@
             speed: rand(2.2, 3.5), count: randInt(6, 14), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(3000, 5000)
           });
         } else if (chosen === 2) {
-          for (let i = 0; i < 4; i++) {
+          // Strictly respect MAX_PER_TYPE
+          const current = collectibles.filter(c => !c.collected && c.type === 'star').length;
+          const toSpawn = Math.max(0, 4 - current);
+          for (let i = 0; i < toSpawn; i++) {
             collectibles.push({
               type: 'star', x: rand(W * 0.08, W * 0.92), y: rand(H * 0.08, H * 0.50),
-              vx: rand(-0.25, 0.25), vy: rand(0.15, 0.35), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(8000, 14000), collected: false, collectAnim: 0
+              vx: rand(-0.25, 0.25), vy: rand(0.15, 0.35), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(12000, 18000), collected: false, collectAnim: 0
             });
           }
         } else if (chosen === 3) {
-          for (let i = 0; i < 4; i++) {
+          const current = collectibles.filter(c => !c.collected && c.type === 'gem').length;
+          const toSpawn = Math.max(0, 4 - current);
+          for (let i = 0; i < toSpawn; i++) {
             collectibles.push({
               type: 'gem', x: rand(W * 0.08, W * 0.92), y: rand(-45, H * 0.25),
-              vx: rand(-0.2, 0.2), vy: rand(0.2, 0.4), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(9000, 15000), collected: false, collectAnim: 0
+              vx: rand(-0.2, 0.2), vy: rand(0.2, 0.4), phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(13000, 19000), collected: false, collectAnim: 0
             });
           }
         } else {
@@ -2908,6 +2913,7 @@
       }
 
       function collectItem(c) {
+        if (c.collected) return;
         c.collected = true;
         totalCollections++;
 
@@ -2928,72 +2934,57 @@
           if (audio.ac.state !== 'running') {
             console.log("%c ⚠️ Audio Latency Detected - Resuming context...", "color: #f39c12;");
             audio.ac.resume().then(() => {
-              audio.collectDing(1.2); // 成功恢复后播放
+              if (audio.collectPiggyBank) audio.collectPiggyBank(1.0);
+              else if (audio.collectDing) audio.collectDing(1.0); // 成功恢复后播放
             });
           } else {
-            audio.collectDing(1.2);
+            if (audio.collectPiggyBank) audio.collectPiggyBank(1.0);
+            else if (audio.collectDing) audio.collectDing(1.0);
           }
         }
 
         // Spawn fly-to-HUD particle from collect position
         spawnFlyToHud(c.x, c.y, c.type);
         collectionNotifications.push({ x: c.x, y: c.y - 8, icon: c.type === 'star' ? '🪙' : '🧧', life: 0, maxLife: 1100 });
+        bumpStatCount(c.type);
       }
 
       function updateMicroSurprises(dt, t) {
         microSurprises.timer -= dt;
 
-        // --- STRICT COLLECTIBLE CONTROL (V6) ---
-        const MAX_TOTAL_ACTIVE = 8;
+        // --- STRICT COLLECTIBLE CONTROL (V7) ---
+        const MAX_PER_TYPE = 4;
         const MIN_SPACING = 150;
 
         let activeCollectibles = collectibles.filter(c => !c.collected);
-        let totalActive = activeCollectibles.length;
+        const starCount = activeCollectibles.filter(c => c.type === 'star').length;
+        const gemCount = activeCollectibles.filter(c => c.type === 'gem').length;
 
-        // If we have room for more
-        if (totalActive < MAX_TOTAL_ACTIVE) {
-          const starCount = activeCollectibles.filter(c => c.type === 'star').length;
-          const gemCount = activeCollectibles.filter(c => c.type === 'gem').length;
+        // replenishment if needed
+        if (starCount < MAX_PER_TYPE || gemCount < MAX_PER_TYPE) {
+          let typeToSpawn = null;
+          if (starCount < MAX_PER_TYPE) typeToSpawn = 'star';
+          else if (gemCount < MAX_PER_TYPE) typeToSpawn = 'gem';
 
-          // Re-fill to exactly 4 of each if room allows
-          if (starCount < 4 || gemCount < 4) {
-            let typeToSpawn = null;
-            if (starCount < 4) typeToSpawn = 'star';
-            else if (gemCount < 4) typeToSpawn = 'gem';
-
-            if (typeToSpawn) {
-              // Spatial Distribution Logic: Try multiple times to find a clear spot
-              let spawnPos = null;
-              for (let attempt = 0; attempt < 8; attempt++) {
-                const tx = rand(W * 0.05, W * 0.95);
-                const ty = rand(H * 0.05, H * 0.95);
-
-                let tooClose = false;
-                for (const existing of activeCollectibles) {
-                  const d = Math.hypot(tx - existing.x, ty - existing.y);
-                  if (d < MIN_SPACING) { tooClose = true; break; }
-                }
-
-                if (!tooClose) {
-                  spawnPos = { x: tx, y: ty };
-                  break;
-                }
+          if (typeToSpawn) {
+            let spawnPos = null;
+            for (let attempt = 0; attempt < 10; attempt++) {
+              const tx = rand(W * 0.05, W * 0.95);
+              const ty = rand(H * 0.05, H * 0.95);
+              let tooClose = false;
+              for (const existing of activeCollectibles) {
+                const d = Math.hypot(tx - existing.x, ty - existing.y);
+                if (d < MIN_SPACING) { tooClose = true; break; }
               }
-
-              if (spawnPos) {
-                collectibles.push({
-                  type: typeToSpawn,
-                  x: spawnPos.x,
-                  y: spawnPos.y,
-                  vx: rand(-0.2, 0.2),
-                  vy: rand(-0.1, 0.2), // Slower vertical drift for better distribution
-                  phase: rand(0, Math.PI * 2),
-                  life: 0,
-                  maxLife: rand(12000, 20000), // Longer life to maintain distribution
-                  collected: false,
-                  collectAnim: 0
-                });
-              }
+              if (!tooClose) { spawnPos = { x: tx, y: ty }; break; }
+            }
+            if (spawnPos) {
+              collectibles.push({
+                type: typeToSpawn, x: spawnPos.x, y: spawnPos.y,
+                vx: rand(-0.15, 0.15), vy: rand(-0.05, 0.15),
+                phase: rand(0, Math.PI * 2), life: 0, maxLife: rand(15000, 25000),
+                collected: false, collectAnim: 0
+              });
             }
           }
         }
@@ -3309,13 +3300,10 @@
         function collectDing(str = 1.0) {
           console.log("%c 🔊 [V4] Metallic Spoon Clang Triggered!", "color: #e67e22; font-weight: bold;");
           const t = ac.currentTime;
-
-          // Master envelope for the ding
           const masterG = ac.createGain();
           masterG.gain.value = str * 1.8;
           masterG.connect(outGain);
 
-          // 1. Initial "Click" (Impact point of the spoon)
           const clickOsc = ac.createOscillator();
           clickOsc.type = 'square';
           clickOsc.frequency.setValueAtTime(1400, t);
@@ -3326,10 +3314,8 @@
           clickGain.connect(masterG);
           clickOsc.start(t); clickOsc.stop(t + 0.01);
 
-          // 2. Metallic Resonance (Inharmonic frequencies)
-          // Spoon-on-metal fundamental is often lower than bird chirps
           const components = [
-            { f: 580, g: 0.5, type: 'triangle' }, // Body of the sound
+            { f: 580, g: 0.5, type: 'triangle' },
             { f: 820, g: 0.3, type: 'sine' },
             { f: 1240, g: 0.2, type: 'sine' },
             { f: 1680, g: 0.15, type: 'sine' },
@@ -3340,20 +3326,54 @@
             const osc = ac.createOscillator();
             osc.type = c.type;
             osc.frequency.setValueAtTime(c.f + Math.random() * 5, t);
-
             const g = ac.createGain();
-            const decay = 0.08 + (0.15 / (i + 1)); // Complex decay
-
+            const decay = 0.08 + (0.15 / (i + 1));
             g.gain.setValueAtTime(0.0001, t);
             g.gain.exponentialRampToValueAtTime(c.g, t + 0.005);
             g.gain.exponentialRampToValueAtTime(c.g * 0.4, t + 0.04);
             g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
-
             osc.connect(g);
             g.connect(masterG);
             osc.start(t);
             osc.stop(t + decay + 0.1);
           });
+        }
+
+        // --- NEW: PIGGY BANK COLLECTION SOUND ---
+        function collectPiggyBank(str = 1.0) {
+          console.log("%c 🔊 [CNY] Piggy Bank Clink Triggered!", "color: #f1c40f; font-weight: bold;");
+          const t = ac.currentTime;
+          const masterG = ac.createGain();
+          masterG.gain.value = str * 2.0;
+          masterG.connect(outGain);
+
+          // Ceramic/Metal clink - high frequency oscillators with very sharp decay
+          const tones = [3200, 4200, 5800];
+          tones.forEach(f => {
+            const o = ac.createOscillator();
+            o.type = 'sine';
+            o.frequency.setValueAtTime(f, t);
+
+            const g = ac.createGain();
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.exponentialRampToValueAtTime(0.4, t + 0.002);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+
+            o.connect(g);
+            g.connect(masterG);
+            o.start(t); o.stop(t + 0.1);
+          });
+
+          // Brief low resonance (the "bank" body)
+          const low = ac.createOscillator();
+          low.type = 'triangle';
+          low.frequency.setValueAtTime(320, t);
+          const lg = ac.createGain();
+          lg.gain.setValueAtTime(0.0001, t);
+          lg.gain.exponentialRampToValueAtTime(0.15, t + 0.005);
+          lg.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+          low.connect(lg); lg.connect(masterG);
+          low.start(t); low.stop(t + 0.1);
         }
 
         function splashTick(str = 0.5) {
@@ -3464,6 +3484,7 @@
           },
           bubbleTick,
           collectDing,
+          collectPiggyBank,
           splashTick,
           setAmbiance,
           swish,
@@ -4366,7 +4387,33 @@
 
         for (let i = 0; i < fish.length; i++) {
           const f = fish[i];
-          let ax = 0, ay = 0; // Initialize at top
+          let ax = 0, ay = 0;
+
+          // --- KOI PHYSICS ISOLATION ---
+          // Koi fish move independently and are not affected by external forces
+          if (f.isKoi) {
+            f.phase += dt * 0.001; // Slower internal phase
+            // Constant leisurely movement with very gentle sway
+            const sway = Math.sin(f.phase) * 0.05;
+            ax = (f.vx > 0 ? 0.01 : -0.01) + sway;
+            ay = Math.cos(f.phase * 0.7) * 0.02;
+
+            // Standard integration bypass for schooling/pointer/etc.
+            f.vx += ax * dt * 0.06;
+            f.vy += ay * dt * 0.06;
+
+            const speed = Math.hypot(f.vx, f.vy);
+            const targetSpeed = 0.8; // Leisurely speed
+            if (speed > 0.001) {
+              f.vx = (f.vx / speed) * targetSpeed;
+              f.vy = (f.vy / speed) * targetSpeed;
+            }
+
+            f.x += f.vx * dt * 0.06;
+            f.y += f.vy * dt * 0.06;
+            f.heading = Math.atan2(f.vy, f.vx);
+            continue;
+          }
 
           // --- Personalities & State Modulation ---
           let p_alignW = alignW;
