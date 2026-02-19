@@ -520,7 +520,6 @@
 
 
       const seagrass = [];
-      const lanterns = [];
       // 三种水草类型：高大海藻、中等标准、矮小细草
       const SEAGRASS_TYPES = [
         { name: 'kelp', lenMin: 140, lenMax: 280, widthMin: 5, widthMax: 8, hueRange: [125, 155], satMin: 28, satMax: 45, litMin: 22, litMax: 35, weight: 25 },
@@ -561,20 +560,6 @@
         }
       }
 
-      function initLanterns() {
-        lanterns.length = 0;
-        const count = isMobile ? 3 : 6;
-        for (let i = 0; i < count; i++) {
-          lanterns.push({
-            x: rand(W * 0.05, W * 0.95),
-            y: rand(H * 0.1, H * 0.4),
-            size: rand(20, 35),
-            phase: Math.random() * Math.PI * 2,
-            speed: rand(0.0005, 0.0012)
-          });
-        }
-      }
-
       function updateSeagrass(dt, t) {
         for (const g of seagrass) {
           // Natural sway - each blade has its own rhythm
@@ -603,46 +588,6 @@
         ctx.restore();
       }
 
-      function drawLanterns(t) {
-        ctx.save();
-        // Background lanterns are blurred and slightly faded
-        ctx.filter = 'blur(2.5px)';
-        for (const l of lanterns) {
-          const pulse = 0.85 + 0.15 * Math.sin(t * l.speed + l.phase);
-          const x = l.x;
-          const y = l.y + Math.sin(t * 0.0005 + l.phase) * 15;
-          const s = l.size * pulse;
-
-          // Glow
-          ctx.globalCompositeOperation = 'screen';
-          const gg = ctx.createRadialGradient(x, y, 0, x, y, s * 3);
-          gg.addColorStop(0, 'rgba(215, 35, 35, 0.2)');
-          gg.addColorStop(1, 'rgba(215, 35, 35, 0)');
-          ctx.fillStyle = gg;
-          ctx.beginPath(); ctx.arc(x, y, s * 3, 0, Math.PI * 2); ctx.fill();
-
-          // Lantern body (oval)
-          ctx.globalCompositeOperation = 'source-over';
-          ctx.fillStyle = 'rgba(200, 30, 30, 0.7)';
-          ctx.beginPath();
-          ctx.ellipse(x, y, s * 0.7, s, 0, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Golden caps
-          ctx.fillStyle = 'rgba(180, 150, 30, 0.7)';
-          ctx.beginPath(); ctx.rect(x - s * 0.4, y - s, s * 0.8, s * 0.15); ctx.fill();
-          ctx.beginPath(); ctx.rect(x - s * 0.4, y + s * 0.85, s * 0.8, s * 0.15); ctx.fill();
-
-          // Tassel hint
-          ctx.strokeStyle = 'rgba(180, 30, 30, 0.5)';
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.moveTo(x, y + s);
-          ctx.lineTo(x, y + s * 1.8);
-          ctx.stroke();
-        }
-        ctx.restore();
-      }
 
 
 
@@ -895,8 +840,8 @@
         const y = rand(H * 0.2, H * 0.8);
         const k = createKoi(x, y);
         k.direction = -side;
-        k.vx = k.direction * 3;
-        k.vy = rand(-0.5, 0.5);
+        k.vx = k.direction * 0.8; // Leisurely entry speed
+        k.vy = rand(-0.2, 0.2);
         k.isTriggeredKoi = true;
         k.remainingLife = 5000; // 5 seconds
         fish.push(k);
@@ -3573,7 +3518,7 @@
           y: y !== undefined ? y : Math.random() * H,
           vx: rand(-0.25, 0.25),
           vy: rand(-0.25, 0.25),
-          size: rand(54.0, 81.0),
+          size: rand(32.0, 48.0),
           isLarge: false,
           isColorful: false,
           isStrange: false,
@@ -4875,7 +4820,6 @@
         // Environment
         updateSeagrass(dt, t);
         drawSeagrass();
-        drawLanterns(t);
 
         // Megafauna in deep background (behind everything else)
         updateMegafauna(dt);
@@ -5005,7 +4949,6 @@
       initSpatial();
       initSubSchools();
       initSeagrass();
-      initLanterns();
 
 
       // Initial pointer position
