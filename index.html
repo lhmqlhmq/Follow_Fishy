@@ -681,6 +681,7 @@
 
 
       // ---------- Pointer Click Interaction ----------
+      let totalCollections = 0;
       const collectibles = [];
       const fishFryGroups = [];
       const collectionNotifications = [];
@@ -2907,10 +2908,18 @@
 
       function collectItem(c) {
         c.collected = true;
-        // Add noticeable vibration for mobile devices
+        totalCollections++;
+
+        // Add noticeable vibration for mobile devices - Stronger pattern
         if (window.navigator && window.navigator.vibrate) {
-          window.navigator.vibrate(40);
+          window.navigator.vibrate([60, 40, 60]);
         }
+
+        // Trigger Koi every 30 collections
+        if (totalCollections > 0 && totalCollections % 30 === 0) {
+          triggerKoiEvent();
+        }
+
         // V2: 超强恢复逻辑与状态记录
         if (soundOn && audio) {
           if (audio.ac.state !== 'running') {
@@ -2943,9 +2952,8 @@
           const starCount = activeCollectibles.filter(c => c.type === 'star').length;
           const gemCount = activeCollectibles.filter(c => c.type === 'gem').length;
 
-          // Re-fill if total active < 8
-          if (totalActive < 8) {
-            // Try to spawn one item this tick if needed
+          // Re-fill to exactly 4 of each if room allows
+          if (starCount < 4 || gemCount < 4) {
             let typeToSpawn = null;
             if (starCount < 4) typeToSpawn = 'star';
             else if (gemCount < 4) typeToSpawn = 'gem';
@@ -3656,9 +3664,19 @@
       }
 
       function reconcileFishCount() {
-        const diff = targetFishCount - fish.length;
+        const normalFishCount = fish.filter(f => !f.isTriggeredKoi).length;
+        const diff = targetFishCount - normalFishCount;
         if (diff > 0) spawnFish(Math.min(diff, 60));
-        else if (diff < 0) fish.splice(Math.max(0, fish.length + diff), Math.min(-diff, 60));
+        else if (diff < 0) {
+          // Only remove normal fish
+          let removed = 0;
+          for (let i = fish.length - 1; i >= 0 && removed < Math.min(-diff, 60); i--) {
+            if (!fish[i].isTriggeredKoi) {
+              fish.splice(i, 1);
+              removed++;
+            }
+          }
+        }
       }
 
       // ============================================================
