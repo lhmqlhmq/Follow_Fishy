@@ -832,6 +832,20 @@
         cntVal.textContent = String(targetFishCount);
       }
 
+      function triggerKoiEvent() {
+        const side = Math.random() < 0.5 ? -1 : 1;
+        const x = side < 0 ? -100 : W + 100;
+        const y = rand(H * 0.2, H * 0.8);
+        const k = createKoi(x, y);
+        k.direction = -side;
+        k.vx = k.direction * 3;
+        k.vy = rand(-0.5, 0.5);
+        k.isTriggeredKoi = true;
+        k.remainingLife = 5000; // 5 seconds
+        fish.push(k);
+        console.log("%c 🎏 Triggered Koi Appears!", "color: #d35400; font-weight: bold;");
+      }
+
       function bumpStatCount(type) {
         if (type === 'star') {
           collectedStars++;
@@ -845,6 +859,11 @@
           gemCountEl.classList.remove('bounce');
           void gemCountEl.offsetWidth;
           gemCountEl.classList.add('bounce');
+        }
+
+        // Trigger Koi every 30 collections
+        if ((collectedStars + collectedGems) % 30 === 0 && (collectedStars + collectedGems) > 0) {
+          triggerKoiEvent();
         }
       }
 
@@ -2888,9 +2907,9 @@
 
       function collectItem(c) {
         c.collected = true;
-        // Add light vibration for mobile devices
+        // Add noticeable vibration for mobile devices
         if (window.navigator && window.navigator.vibrate) {
-          window.navigator.vibrate(15);
+          window.navigator.vibrate(40);
         }
         // V2: 超强恢复逻辑与状态记录
         if (soundOn && audio) {
@@ -2930,7 +2949,6 @@
             let typeToSpawn = null;
             if (starCount < 4) typeToSpawn = 'star';
             else if (gemCount < 4) typeToSpawn = 'gem';
-            else if (totalActive < MAX_TOTAL_ACTIVE) typeToSpawn = Math.random() > 0.5 ? 'star' : 'gem';
 
             if (typeToSpawn) {
               // Spatial Distribution Logic: Try multiple times to find a clear spot
@@ -3480,7 +3498,52 @@
       // ============================================================
       // FISH
       // ============================================================
-      const fish = [];
+      let fish = [];
+
+      function createKoi(x, y) {
+        // Shared Koi initialization logic
+        const f = {
+          x: x !== undefined ? x : Math.random() * W,
+          y: y !== undefined ? y : Math.random() * H,
+          vx: rand(-0.25, 0.25),
+          vy: rand(-0.25, 0.25),
+          size: rand(6.0, 9.0),
+          isLarge: false,
+          isColorful: false,
+          isStrange: false,
+          strangeProps: null,
+          bubbleAffinity: Math.random(),
+          baseHue: 0 + rand(-8, 8),
+          baseSatMin: 80,
+          baseSatMax: 100,
+          hueSeed: Math.random(),
+          wander: rand(0.7, 1.3),
+          phase: rand(0, 1000),
+          breakout: 0,
+          tailPhase: rand(0, Math.PI * 2),
+          scaleShimmer: rand(1.1, 1.5),
+          bodyTone: rand(-5, 5),
+          bodyPhase: rand(0, Math.PI * 2),
+          bodyWaveSpeed: rand(0.008, 0.015),
+          rhythmOffset: rand(0, Math.PI * 2),
+          heading: rand(0, Math.PI * 2),
+          lastHeading: rand(0, Math.PI * 2),
+          orbitDir: Math.random() < 0.5 ? 1 : -1,
+          orbitBias: rand(0.5, 1.5),
+          orbitRadius: rand(100, 160),
+          personality: 'bold',
+          response: null,
+          suppressAttraction: 0,
+          expansionBoost: 1.0,
+          isKoi: true,
+          koiPattern: Array.from({ length: 5 }, () => ({ x: rand(0.2, 0.8), y: rand(-0.3, 0.3), r: rand(0.15, 0.35) })),
+          leapTimer: rand(5000, 15000),
+          leaping: false,
+          trail: []
+        };
+        assignDepthLayer(f);
+        return f;
+      }
 
       function spawnFish(n) {
         // Realistic fish colors - mostly silver/blue-gray with subtle variations
@@ -3516,8 +3579,8 @@
 
         for (let i = 0; i < n; i++) {
           const roll = Math.random();
-          const isKoi = roll < 0.02; // 2% chance for a Rare Elite Koi
-          const isStrange = !isKoi && false; // DISABLED UNNATURAL FISH
+          const isKoi = false; // Disable random Koi spawning
+          const isStrange = false;
           const isColorful = !isKoi && !isStrange && roll < 0.21;
           const isLarge = !isKoi && !isStrange && !isColorful && roll < 0.45;
 
@@ -4701,6 +4764,21 @@
         const t = performance.now();
         const dt = Math.min(50, t - lastT);
         lastT = t;
+
+        // Cleanup dead/temporary fish
+        let removed = false;
+        for (let i = fish.length - 1; i >= 0; i--) {
+          const f = fish[i];
+          if (f.isTriggeredKoi) {
+            f.remainingLife -= dt;
+            if (f.remainingLife <= 0) {
+              fish.splice(i, 1);
+              removed = true;
+            }
+          }
+        }
+        if (removed && typeof updateHud === 'function') updateHud();
+
         // 每帧重设缩放变换矩阵
         ctx.setTransform(DPR / WORLD_SCALE, 0, 0, DPR / WORLD_SCALE, 0, 0);
         pointer.idle += dt; // Increment idle timer for predator logic
