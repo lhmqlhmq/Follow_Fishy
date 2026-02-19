@@ -823,6 +823,26 @@
         spawnBubbleCluster(clickX, clickY);
       }
 
+      function triggerScreenShake(magnitude = 10) {
+        const duration = 250;
+        const startTime = performance.now();
+        const originalTransform = ctx.getTransform();
+
+        function shake() {
+          const elapsed = performance.now() - startTime;
+          if (elapsed < duration) {
+            const p = 1 - (elapsed / duration);
+            const ox = (Math.random() - 0.5) * magnitude * p;
+            const oy = (Math.random() - 0.5) * magnitude * p;
+            document.body.style.transform = `translate(${ox}px, ${oy}px)`;
+            requestAnimationFrame(shake);
+          } else {
+            document.body.style.transform = 'none';
+          }
+        }
+        shake();
+      }
+
       function triggerFlashExpansion(cx, cy) {
         // Flash Expansion: Large-scale repulsion
         // V2: 直径进一步降低 (至原版的 13%) -> 0.6 * 0.13 = 0.08
@@ -890,7 +910,7 @@
 
       function triggerKoiEvent() {
         const side = Math.random() < 0.5 ? -1 : 1;
-        const x = side < 0 ? -100 : W + 100;
+        const x = side < 0 ? -40 : W + 40;
         const y = rand(H * 0.2, H * 0.8);
         const k = createKoi(x, y);
         k.direction = -side;
@@ -2968,6 +2988,9 @@
         // Add noticeable vibration for mobile devices - Stronger pattern
         if (window.navigator && window.navigator.vibrate) {
           window.navigator.vibrate([60, 40, 60]);
+        } else {
+          // iOS Fallback: Visual shake
+          triggerScreenShake(8);
         }
 
         // Trigger Koi every 30 collections
@@ -4236,6 +4259,13 @@
       }
 
       function drawKoi(f, s, t, nearPow, alpha) {
+        if (isNaN(f.x) || isNaN(f.y)) return;
+        const ang = f.heading !== undefined ? f.heading : Math.atan2(f.vy, f.vx);
+
+        ctx.save();
+        ctx.translate(f.x, f.y);
+        ctx.rotate(ang);
+
         // Koi Body - Slightly more slender than normal fish
         ctx.save();
         const bodyWave = Math.sin(t * 0.005 + f.phase) * 0.15;
@@ -5042,12 +5072,13 @@
       };
 
       window.testVibrate = () => {
-        console.log("%c 🧪 Manual Trigger: Vibration [80, 50, 80]", "color: #0af; font-weight: bold;");
+        console.log("%c 🧪 Manual Trigger: Vibration & Screen Shake", "color: #0af; font-weight: bold;");
+        triggerScreenShake(12);
         if (navigator.vibrate) {
           navigator.vibrate([80, 50, 80]);
         } else {
-          console.warn("Vibration API not supported on this browser.");
-          alert("Your browser does not support the Vibration API.");
+          console.warn("Vibration API not supported on this browser. Fallback to screen shake.");
+          // alert("Your browser does not support the Vibration API. Triggering screen shake instead.");
         }
       };
 
