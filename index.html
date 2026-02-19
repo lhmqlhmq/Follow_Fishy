@@ -330,8 +330,9 @@
       color: rgba(255, 255, 255, 0.45);
       /* Increased clarity */
       font: italic 11px serif;
-      pointer-events: none;
-      z-index: 5;
+      pointer-events: auto;
+      z-index: 10001;
+      cursor: pointer;
       letter-spacing: 0.8px;
       white-space: nowrap;
       text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -5018,8 +5019,13 @@
 
       // ---------- Internal Test & Debug Logic ----------
       let wmClicks = 0;
-      document.getElementById('watermark').onclick = () => {
+      let lastWMClick = 0;
+      document.getElementById('watermark').addEventListener('pointerdown', (e) => {
+        const now = performance.now();
+        if (now - lastWMClick > 1000) wmClicks = 0; // Reset if clicks are too slow
         wmClicks++;
+        lastWMClick = now;
+
         if (wmClicks >= 3) {
           const panel = document.getElementById('debugPanel');
           panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
@@ -5028,7 +5034,7 @@
             document.getElementById('debugColl').textContent = totalCollections;
           }
         }
-      };
+      });
 
       window.testKoi = () => {
         console.log("%c 🧪 Manual Trigger: Spawning Koi Fish", "color: #0af; font-weight: bold;");
