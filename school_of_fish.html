@@ -3082,9 +3082,33 @@
       let soundOn = false;
       let audio = null;
 
+      function createNoopAudio() {
+        return {
+          available: false,
+          ac: null,
+          enable() { },
+          disable() { },
+          bubbleTick() { },
+          splashTick() { },
+          setAmbiance() { },
+          swish() { },
+          eventRumble() { },
+          predatorApproach() { },
+          predatorVictory() { }
+        };
+      }
+
       function createAudio() {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        const ac = new AudioCtx();
+        if (!AudioCtx) {
+          return createNoopAudio();
+        }
+        let ac;
+        try {
+          ac = new AudioCtx();
+        } catch {
+          return createNoopAudio();
+        }
         const master = ac.createGain();
         master.gain.value = 0.0;
 
@@ -3355,6 +3379,7 @@
         }
 
         return {
+          available: true,
           ac, master,
           enable() {
             const t = ac.currentTime;
@@ -3383,6 +3408,13 @@
       document.getElementById('snd').onclick = async () => {
         if (!audio) {
           audio = createAudio();
+          if (!audio.available) {
+            const button = document.getElementById('snd');
+            soundOn = false;
+            button.disabled = true;
+            button.textContent = 'Sound Unavailable';
+            return;
+          }
           try { if (audio.ac.state !== 'running') await audio.ac.resume(); } catch { }
         }
         soundOn = !soundOn;
